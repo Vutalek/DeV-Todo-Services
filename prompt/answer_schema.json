@@ -1,0 +1,26 @@
+    {
+    "required": [
+        "name",
+        "desc",
+        "prio",
+        "time"
+    ],
+    "properties": {
+        "name": {
+            "description": "название задачи",
+            "type": "string"
+        },
+        "time": {
+            "description": "время на выполнение задачи в часах",
+            "type": "number"
+        },
+        "prio": {
+            "description": "приоритет задачи от 1 до 5",
+            "type": "number"
+        },
+        "desc": {
+            "description": "описание задачи",
+            "type": "string"
+        }
+    }
+}
