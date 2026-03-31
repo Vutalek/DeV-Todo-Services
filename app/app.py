@@ -1,9 +1,7 @@
 import os
-
 from openai import OpenAI
 from pydantic import BaseModel, Field
 from typing import Literal, List
-import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
@@ -26,7 +24,11 @@ app.add_middleware(
 
 MODEL = "nvidia/nemotron-3-super-120b-a12b:free"
 
-with open('prompt/prompt.txt', 'r', encoding='utf-8') as f:
+APP_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.dirname(APP_DIR)
+prompt_path = os.path.join(BASE_DIR, 'prompt', 'prompt.txt')
+
+with open(prompt_path, 'r', encoding='utf-8') as f:
     prompt = f.read()
 
 client = OpenAI(
@@ -44,6 +46,7 @@ class Task(BaseModel):
     prio: int = Field(ge=1, le=5, description="Приоритет от 1 до 5")
     time: int = Field(gt=0, description="Время в часах")
     roadmap: str = Field(default="", description="Roadmap для задачи")
+    column: str = Field(default=['В'])
 
 
 class Message(BaseModel):
