@@ -46,7 +46,8 @@ class Task(BaseModel):
     prio: int = Field(ge=1, le=5, description="Приоритет от 1 до 5")
     time: int = Field(gt=0, description="Время в часах")
     roadmap: str = Field(default="", description="Roadmap для задачи")
-    column: str = Field(default=['В'])
+    column: List[Literal['Бэклог', 'В работе']] = Field(
+        default=['В работе'], description='Колонка в которой будет находиться задача')
 
 
 class Message(BaseModel):
