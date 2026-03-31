@@ -1,9 +1,11 @@
 import os
 
-import openai
+from openai import OpenAI
+from pydantic import BaseModel, Field
+from typing import Literal, List
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -22,22 +24,45 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-client = openai.OpenAI(
-    api_key=os.getenv("API_KEY"),
-    base_url="https://ai.api.cloud.yandex.net/v1",
-    project="b1gccpjnou3q4l9pegs9"
+MODEL = "nvidia/nemotron-3-super-120b-a12b:free"
+
+with open('prompt/prompt.txt', 'r', encoding='utf-8') as f:
+    prompt = f.read()
+
+client = OpenAI(
+    base_url="https://openrouter.ai/api/v1",
+    api_key=os.getenv("ROUTER_API_KEY")
 )
 
-# body
+
+class Task(BaseModel):
+    name: str = Field(description="Название задачи")
+    desc: str = Field(default="", max_length=250,
+                      description="Краткое описание (не более 200 токенов)")
+    label: List[Literal['refactor', 'feature', 'bug', 'security',
+                        'improvement', 'technical-debt']] = Field(default=['bug'], description="Метки задачи")
+    prio: int = Field(ge=1, le=5, description="Приоритет от 1 до 5")
+    time: int = Field(gt=0, description="Время в часах")
+    roadmap: str = Field(default="", description="Roadmap для задачи")
+
+
 class Message(BaseModel):
     text: str
 
+
 @app.post("/app/v1/send")
 def sendtask(message: Message):
-    response = client.responses.create(
-        prompt={
-            "id": "fvtalhr0tvl0hd6mlpgg",
-        },
-        input=message.text,
+    response = client.chat.completions.parse(
+        model=MODEL,
+        messages=[
+            {
+                "role": "system", "content": prompt
+            },
+            {
+                "role": "user", "content": message.text
+            },
+        ],
+        temperature=0.3,
+        response_format=Task,
     )
-    return {"status": "success", "result": response}
+    return {"status": "success", "result": response.choices[0].message.parsed}
