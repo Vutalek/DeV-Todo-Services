@@ -83,6 +83,10 @@ class Message(BaseModel):
     text: str
 
 
+@app.get("/app/v1/heartbeat")
+def heartbeat():
+    return {"status": "alive"}
+
 @app.post("/app/v1/send")
 def sendtask(message: Message):
     col_map, lab_map = get_trello_data()
