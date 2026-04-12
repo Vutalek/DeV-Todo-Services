@@ -1,0 +1,76 @@
+name: Build & Deploy
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Copy files to server
+        uses: appleboy/scp-action@master
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT || '22' }}
+          source: "."
+          target: ${{ secrets.APP_DIR }}
+          exclude: ".git,node_modules,.env,*.log,docker-compose.yml"
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT || '22' }}
+          
+          script: |
+            set -e
+
+            APP_DIR="${{ secrets.APP_DIR }}"
+            TRELLO_API_KEY="${{ secrets.TRELLO_API_KEY }}"
+            TRELLO_TOKEN="${{ secrets.TRELLO_TOKEN }}"
+            TRELLO_BOARD_ID="${{ secrets.TRELLO_BOARD_ID }}"
+            ROUTER_API_KEY="${{ secrets.ROUTER_API_KEY }}"
+
+            # Создаём директорию приложения, если её нет
+            mkdir -p $APP_DIR
+            cd $APP_DIR
+
+            # Безопасно генерируем .env файл
+            cat > .env <<EOF
+            TRELLO_API_KEY=$TRELLO_API_KEY
+            TRELLO_TOKEN=$TRELLO_TOKEN
+            TRELLO_BOARD_ID=$TRELLO_BOARD_ID
+            ROUTER_API_KEY=$ROUTER_API_KEY
+            EOF
+
+            # Ограничиваем права доступа
+            chmod 600 .env
+
+            # Сборка образа
+            docker build -t app .
+
+            # Останавливаем и удаляем старый контейнер (игнорируем ошибки, если контейнера нет)
+            docker stop app 2>/dev/null || true
+            docker rm app 2>/dev/null || true
+
+            # Запускаем новый контейнер с .env
+            docker run -d \
+              --name app \
+              --env-file .env \
+              -p 8000:8000 \
+              --restart unless-stopped \
+              app
+
+            # Очищаем старые образы
+            docker image prune -f
+
+            echo "✅ Деплой завершён успешно!"
