@@ -45,7 +45,7 @@ USER appuser
 COPY . .
 
 # Copy .env
-COPY .env .env
+COPY ./.env .env
 
 # Expose the port that the application listens on.
 EXPOSE 8000
