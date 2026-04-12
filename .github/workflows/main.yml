@@ -1,0 +1,60 @@
+name: Deploy to Remote Server
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT || '22' }}
+          
+          envs: APP_DIR, TRELLO_API_KEY, TRELLO_TOKEN, TRELLO_BOARD_ID, ROUTER_API_KEY
+          script: |
+            set -e
+
+            # Создаём директорию приложения, если её нет
+            mkdir -p $APP_DIR
+            cd $APP_DIR
+
+            # Безопасно генерируем .env файл
+            cat > .env <<EOF
+            TRELLO_API_KEY=$TRELLO_API_KEY
+            TRELLO_TOKEN=$TRELLO_TOKEN
+            TRELLO_BOARD_ID=$TRELLO_BOARD_ID
+            ROUTER_API_KEY=$ROUTER_API_KEY
+            EOF
+
+            # Ограничиваем права доступа
+            chmod 600 .env
+
+            # Подтягиваем последний образ
+            docker pull $DOCKER_IMAGE
+
+            # Останавливаем и удаляем старый контейнер (игнорируем ошибки, если контейнера нет)
+            docker stop app 2>/dev/null || true
+            docker rm app 2>/dev/null || true
+
+            # Запускаем новый контейнер с .env
+            docker run -d \
+              --name app \
+              --env-file .env \
+              -p 8000:8000 \
+              --restart unless-stopped \
+              $DOCKER_IMAGE
+
+            # Очищаем старые образы
+            docker image prune -f
+
+            echo "✅ Деплой завершён успешно!"
