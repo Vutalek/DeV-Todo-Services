@@ -20,10 +20,12 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT || '22' }}
           
-          envs: APP_DIR, TRELLO_API_KEY, TRELLO_TOKEN, TRELLO_BOARD_ID, ROUTER_API_KEY
           script: |
-            whoami
-            hostname
+            APP_DIR="${{ secrets.APP_DIR }}"
+            TRELLO_API_KEY="${{ secrets.TRELLO_API_KEY }}"
+            TRELLO_TOKEN="${{ secrets.TRELLO_TOKEN }}"
+            TRELLO_BOARD_ID="${{ secrets.TRELLO_BOARD_ID }}"
+            ROUTER_API_KEY="${{ secrets.ROUTER_API_KEY }}"
             set -e
 
             # Создаём директорию приложения, если её нет
