@@ -1,0 +1,13 @@
+[project]
+name = "todo"
+version = "0.1.0"
+description = "TODO dev"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "dotenv>=0.9.9",
+    "fastapi>=0.135.2",
+    "openai>=2.24.0",
+    "requests>=2.33.1",
+    "uvicorn>=0.43.0",
+]
