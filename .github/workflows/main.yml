@@ -22,6 +22,8 @@ jobs:
           
           envs: APP_DIR, TRELLO_API_KEY, TRELLO_TOKEN, TRELLO_BOARD_ID, ROUTER_API_KEY
           script: |
+            whoami
+            hostname
             set -e
 
             # Создаём директорию приложения, если её нет
