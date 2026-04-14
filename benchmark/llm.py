@@ -1,5 +1,5 @@
 import time
-from typing import Optional
+from typing import Optional, Any
 from openai import OpenAI
 
 from config import OPENROUTER_API_KEY, OPENROUTER_BASE_URL
@@ -11,7 +11,42 @@ if not OPENROUTER_API_KEY:
 client = OpenAI(
     base_url=OPENROUTER_BASE_URL,
     api_key=OPENROUTER_API_KEY,
+    timeout=45.0,
+
 )
+
+
+def parse_with_retry(
+    *,
+    model: str,
+    messages: list[dict],
+    temperature: float,
+    max_tokens: int,
+    response_format: Any,
+    retries: int = 3,
+    delay_seconds: float = 5.0,
+):
+    last_error = None
+
+    for attempt in range(1, retries + 1):
+        try:
+            return client.chat.completions.parse(
+                model=model,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                response_format=response_format,
+            )
+        except Exception as e:
+            last_error = e
+            error_type = type(e).__name__
+            print(
+                f"[parse_with_retry] attempt {attempt}/{retries} failed: {error_type}: {e}")
+
+            if attempt < retries:
+                time.sleep(delay_seconds)
+
+    raise last_error
 
 
 def _tokens_per_sec(total_tokens: int, elapsed_sec: float) -> Optional[float]:
@@ -29,7 +64,7 @@ def run_candidate(
 ) -> dict:
     started = time.perf_counter()
 
-    parsed = client.chat.completions.parse(
+    parsed = parse_with_retry(
         model=model,
         messages=[
             {"role": "system", "content": system_prompt},
@@ -37,7 +72,9 @@ def run_candidate(
         ],
         temperature=temperature,
         max_tokens=max_tokens,
-        response_format=Task
+        response_format=Task,
+        retries=3,
+        delay_seconds=5.0,
     )
 
     elapsed = time.perf_counter() - started
@@ -83,7 +120,7 @@ def run_judge(
 ) -> dict:
     started = time.perf_counter()
 
-    parsed = client.chat.completions.parse(
+    parsed = parse_with_retry(
         model=judge_model,
         messages=[
             {"role": "system", "content": judge_system_prompt},
@@ -92,9 +129,11 @@ def run_judge(
                 "content": build_judge_user_prompt(question, reference, answer),
             },
         ],
-        temperature=0,
+        temperature=0.3,
         max_tokens=max_tokens,
         response_format=JudgeScores,
+        retries=3,
+        delay_seconds=5.0,
     )
 
     elapsed = time.perf_counter() - started
