@@ -8,6 +8,7 @@ dependencies = [
     "dotenv>=0.9.9",
     "fastapi>=0.135.2",
     "openai>=2.24.0",
+    "orjson>=3.11.8",
     "requests>=2.33.1",
     "uvicorn>=0.43.0",
 ]
