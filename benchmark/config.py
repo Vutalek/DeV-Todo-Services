@@ -11,17 +11,17 @@ OPENROUTER_BASE_URL = os.getenv(
 DEFAULT_CANDIDATE_MODELS = [
     "google/gemini-2.5-flash-lite",  # 0.10, 0.40
     "deepseek/deepseek-v3.2",  # 0.26, 0.38
-    "openai/gpt-4o-mini",  # 0.15, 0.60
+    "x-ai/grok-4.1-fast",  # 0.2, 0.50
 ]
 
 DEFAULT_JUDGE_MODELS = [
-    "openai/gpt-4o-mini",  # 0.15, 0.60
-    "google/gemini-3-flash-preview",  # 0.50, 3
+    "openai/gpt-5.4",  # 2.5, 15
+    "google/gemini-3.1-pro-preview",  # 2, 12
 ]
 
 DEFAULT_TEMPERATURE = 0.6
-DEFAULT_MAX_TOKENS = 2500
-DEFAULT_JUDGE_MAX_TOKENS = 2500
+DEFAULT_MAX_TOKENS = 5000
+DEFAULT_JUDGE_MAX_TOKENS = 10000
 
 BASE_DIR = Path(__file__).resolve().parent
 PROMPTS_DIR = BASE_DIR / "prompts"

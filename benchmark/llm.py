@@ -41,7 +41,7 @@ def parse_with_retry(
             last_error = e
             error_type = type(e).__name__
             print(
-                f"[parse_with_retry] attempt {attempt}/{retries} failed: {error_type}: {e}")
+                f"Attempt {attempt}/{retries} failed: {error_type}: {e}")
 
             if attempt < retries:
                 time.sleep(delay_seconds)
