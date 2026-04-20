@@ -30,7 +30,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-MODEL = "nvidia/nemotron-3-super-120b-a12b:free"
+MODEL = "deepseek/deepseek-v3.2"
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 BASE_DIR = os.path.dirname(APP_DIR)
@@ -67,7 +67,7 @@ def create_dynamic_task_model(columns: list, labels: list) -> Type[BaseModel]:
     return create_model(
         'Task',
         name=(str, Field(description="Название задачи")),
-        desc=(str, Field(default="", max_length=250,
+        desc=(str, Field(default="", max_length=750,
                          description="Краткое описание (не более 250 токенов)")),
         label=(List[TrelloLabels], Field(description="Метки задачи")),
         prio=(int, Field(ge=1, le=5, description="Приоритет от 1 до 5")),
@@ -86,6 +86,7 @@ class Message(BaseModel):
 @app.get("/app/v1/heartbeat")
 def heartbeat():
     return {"status": "alive"}
+
 
 @app.post("/app/v1/send")
 def sendtask(message: Message):

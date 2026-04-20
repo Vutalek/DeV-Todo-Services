@@ -208,3 +208,5 @@ __marimo__/
 
 # custom
 test.py
+benchmark/data/examples.jsonl
+benchmark/res/results.jsonl
