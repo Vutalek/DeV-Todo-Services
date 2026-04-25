@@ -1,11 +1,11 @@
-from typing import Dict, List
+from typing import Dict, List, Any
 
-from models import JudgeScores, CalibrationTable
+from models import CalibrationTable
 
 
 def deviation_analysis(
     model_name: str,
-    judge_scores: List[JudgeScores],
+    judge_scores: Dict[str, Any],
     references: List[Dict[str, float]]
 ) -> CalibrationTable:
     score = []
@@ -13,10 +13,10 @@ def deviation_analysis(
     completeness = []
     clarity = []
     for judge_score, reference in zip(judge_scores, references):
-        score.append(judge_score.score - reference["score"])
-        correctness.append(judge_score.correctness - reference["correctness"])
-        completeness.append(judge_score.completeness - reference["completeness"])
-        clarity.append(judge_score.clarity - reference["clarity"])
+        score.append(judge_score.scores["score"] - reference["score"])
+        correctness.append(judge_score.scores["correctness"] - reference["correctness"])
+        completeness.append(judge_score.scores["completeness"] - reference["completeness"])
+        clarity.append(judge_score.scores["clarity"] - reference["clarity"])
     
     return CalibrationTable(
         model_name=model_name,
