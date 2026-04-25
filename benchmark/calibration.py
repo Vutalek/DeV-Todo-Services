@@ -54,7 +54,7 @@ def main() -> None:
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    results_path = output_dir / "results.jsonl"
+    results_path = output_dir / "calibration_tables.jsonl"
 
     result_rows: list[CalibrationTable] = []
 
