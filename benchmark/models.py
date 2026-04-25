@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional, List, Literal
+from typing import Optional, List, Literal, Dict
 
 
 class InputExample(BaseModel):
@@ -7,6 +7,12 @@ class InputExample(BaseModel):
     question: str
     reference: str
 
+class CalibrationExample(BaseModel):
+    id: str
+    question: str
+    reference: str
+    reference_from_llm: str
+    reference_ranks: Dict[str, float]
 
 class Task(BaseModel):
     name: str = Field(description="Название задачи")
@@ -49,3 +55,10 @@ class CandidateRunResult(BaseModel):
     judge_models: List[str]
     judge_results: List[dict]
     avg_scores: AveragedJudgeScores
+
+class CalibrationTable(BaseModel):
+    model_name: str
+    score: float
+    correctness: float
+    completeness: float
+    clarity: float

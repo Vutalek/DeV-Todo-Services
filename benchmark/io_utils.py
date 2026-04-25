@@ -3,7 +3,7 @@ from pathlib import Path
 import orjson
 from typing import Iterable
 
-from models import InputExample
+from models import InputExample, CalibrationExample
 
 
 def load_text(path: str) -> str:
@@ -17,6 +17,15 @@ def read_jsonl(path: str) -> list[InputExample]:
             if not line.strip():
                 continue
             items.append(InputExample.model_validate(orjson.loads(line)))
+    return items
+
+def read_calibration_jsonl(path: str) -> list[CalibrationExample]:
+    items: list[CalibrationExample] = []
+    with open(path, "rb") as f:
+        for line in f:
+            if not line.strip():
+                continue
+            items.append(CalibrationExample.model_validate(orjson.loads(line)))
     return items
 
 
