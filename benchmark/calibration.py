@@ -78,7 +78,7 @@ def main() -> None:
             references=reference_ranks
         )
 
-        result_rows.append(row)
+        result_rows.append(row.model_dump())
 
     write_jsonl(str(results_path), result_rows)
 
