@@ -13,10 +13,10 @@ def deviation_analysis(
     completeness = []
     clarity = []
     for judge_score, reference in zip(judge_scores, references):
-        score.append(judge_score.scores["score"] - reference["score"])
-        correctness.append(judge_score.scores["correctness"] - reference["correctness"])
-        completeness.append(judge_score.scores["completeness"] - reference["completeness"])
-        clarity.append(judge_score.scores["clarity"] - reference["clarity"])
+        score.append(judge_score["scores"].score - reference["score"])
+        correctness.append(judge_score["scores"].correctness - reference["correctness"])
+        completeness.append(judge_score["scores"].completeness - reference["completeness"])
+        clarity.append(judge_score["scores"].clarity - reference["clarity"])
     
     return CalibrationTable(
         model_name=model_name,
