@@ -210,4 +210,4 @@ __marimo__/
 test.py
 benchmark/data/examples.jsonl
 benchmark/res/results.jsonl
-db/chroma_db
+db/chroma_db/

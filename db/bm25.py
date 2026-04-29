@@ -1,6 +1,6 @@
 from rank_bm25 import BM25Okapi
 import re
-from parse_data import RetrievalTask, task_to_document, task_to_metadata
+from handler_data import RetrievalTask, task_to_document, task_to_metadata
 
 
 class BM25TaskSearch:
