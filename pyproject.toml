@@ -5,10 +5,13 @@ description = "TODO dev"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "chromadb>=1.5.8",
     "dotenv>=0.9.9",
     "fastapi>=0.135.2",
     "openai>=2.24.0",
     "orjson>=3.11.8",
+    "pandas>=3.0.2",
+    "rank-bm25>=0.2.2",
     "requests>=2.33.1",
     "uvicorn>=0.43.0",
 ]
