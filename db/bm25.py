@@ -35,7 +35,6 @@ class BM25TaskSearch:
             {
                 'id': self.ids[i],
                 'document': self.documents[i],
-                'metadata': self.metadatas[i],
                 'bm25_score': float(scores[i]),
             }
             for i in ranked_indexes
@@ -50,9 +49,6 @@ def rrf_fusion(vector_results, bm25_results, k: int = 60, top_n: int = 10):
         scores[doc_id] = scores.get(doc_id, 0.0) + 1.0 / (k + rank)
         payloads[doc_id] = {
             'id': doc_id,
-            'metadata': vector_results['metadatas'][0][rank - 1],
-            'vector_distance': vector_results['distances'][0][rank - 1],
-            'source': 'vector',
         }
 
     for rank, item in enumerate(bm25_results, start=1):
@@ -62,13 +58,7 @@ def rrf_fusion(vector_results, bm25_results, k: int = 60, top_n: int = 10):
         if doc_id not in payloads:
             payloads[doc_id] = {
                 'id': doc_id,
-                'metadata': item['metadata'],
-                'bm25_score': item['bm25_score'],
-                'source': 'bm25',
             }
-        else:
-            payloads[doc_id]['bm25_score'] = item['bm25_score']
-            payloads[doc_id]['source'] = 'hybrid'
 
     ranked_ids = sorted(scores, key=scores.get, reverse=True)[:top_n]
 

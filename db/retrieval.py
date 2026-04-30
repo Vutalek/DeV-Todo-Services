@@ -1,3 +1,4 @@
+import requests
 from dotenv import load_dotenv
 from pathlib import Path
 from embedding import PplxEmbedding
@@ -39,10 +40,10 @@ bm25 = BM25TaskSearch(
     metadatas=metadatas,
 )
 
-bm25_results = bm25.search(query_text, n_results=10, where_days=(0, 60))
+bm25_results = bm25.search(query_text, n_results=30, where_days=(0, 60))
 
-result = collection.query(
-    query_texts=[query_text], n_results=10, include=['metadatas', 'distances'], where={
+vectors_result = collection.query(
+    query_texts=[query_text], n_results=30, include=['distances'], where={
         '$and': [
             {'business_days': {'$gte': 0}},
             {'business_days': {'$lte': 60}},
@@ -50,10 +51,37 @@ result = collection.query(
     })
 
 hybrid_results = rrf_fusion(
-    vector_results=result,
+    vector_results=vectors_result,
     bm25_results=bm25_results,
-    top_n=3,
+    top_n=30,
 )
 
-for item in hybrid_results:
-    print(item['hybrid_score'], item['metadata'])
+documents_id = [item['id'] for item in hybrid_results]
+chroma_data = collection.get(ids=documents_id)
+
+docs = chroma_data['documents']
+metadatas = chroma_data['metadatas']
+
+response = requests.post(
+    'https://openrouter.ai/api/v1/rerank',
+    headers={
+        'Authorization': f"Bearer {os.getenv('ROUTER_API_KEY')}",
+        'Content-Type': 'application/json'
+    },
+    json={
+        'model': 'cohere/rerank-4-fast',
+        'query': query_text,
+        'documents': docs,
+        'top_n': 5
+    }
+)
+
+reranked = response.json()
+result = [{'text': r['document']['text'], 'metadata': metadatas[r['index']]}
+          for r in reranked['results']
+          ]
+
+
+for item in result:
+    print(
+        f"{item['text']}\ntime_spent: {item['metadata']['business_days']} days")
