@@ -15,6 +15,7 @@ FIELDS = [
     'priority',
     'created',
     'description',
+    'resolutiondate',
 ]
 
 LIMIT = 5000
@@ -50,11 +51,12 @@ while len(rows) < LIMIT:
 
         rows.append({
             'url': f"{BASE_URL}/browse/{issue['key']}",
-            'description': f.get('description'),
-            'summary': f.get('summary'),
+            'desc': f.get('description'),
+            'name': f.get('summary'),
             'issue_type': f.get('issuetype', {}).get('name') if f.get('issuetype') else None,
             'priority': f.get('priority', {}).get('name') if f.get('priority') else None,
             'created': f.get('created'),
+            'resolved': f.get('resolutiondate'),
         })
 
         if len(rows) >= LIMIT:

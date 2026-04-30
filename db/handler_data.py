@@ -23,7 +23,7 @@ def parse_datetime(value: str | None) -> datetime | None:
     if not value:
         return None
 
-    return datetime.strptime(value, '%d/%b/%Y %I:%M %p')
+    return datetime.strptime(value, '%Y-%m-%dT%H:%M:%S.%f%z')
 
 
 def compute_lead_time_hours(created_at: str | None, finished_at: str | None) -> float | None:
@@ -85,8 +85,7 @@ def load_tasks_to_chroma(collection, tasks: list[RetrievalTask]):
 def csv_to_tasks(file_path: str) -> list[RetrievalTask]:
 
     df = pd.read_csv(file_path)
-    df = df[['Summary', 'Issue Type', 'Priority',
-            'Created', 'Resolved', 'Description']]
+    df = df.drop(columns=['url'])
 
     df = df.dropna()
     df = df.drop_duplicates()
@@ -95,12 +94,12 @@ def csv_to_tasks(file_path: str) -> list[RetrievalTask]:
     for row in df.iterrows():
 
         task = {
-            'name': (row[1]['Summary']),
-            'desc': (row[1]['Description']),
-            'prio': (row[1]['Priority']),
-            'label': (row[1]['Issue Type']),
-            'created_at': (row[1]['Created']),
-            'finished_at': (row[1]['Resolved']),
+            'name': (row[1]['name']),
+            'desc': (row[1]['desc']),
+            'prio': (row[1]['priority']),
+            'label': (row[1]['issue_type']),
+            'created_at': (row[1]['created']),
+            'finished_at': (row[1]['resolved']),
         }
 
         try:

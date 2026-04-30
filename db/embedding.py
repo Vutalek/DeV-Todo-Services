@@ -9,7 +9,7 @@ class PplxEmbedding(EmbeddingFunction):
     def __init__(self, model, client):
         self.model = model
         self.client = client
-        self.batch_size = 4
+        self.batch_size = 256
 
     def __call__(self, input: Documents) -> Embeddings:
         texts = list(input)

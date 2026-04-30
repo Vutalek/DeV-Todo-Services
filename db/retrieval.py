@@ -24,11 +24,11 @@ ef = PplxEmbedding(model='perplexity/pplx-embed-v1-0.6b', client=client)
 collection = client_chroma.get_or_create_collection(
     name='TODO', embedding_function=ef)
 
-tasks = csv_to_tasks(CHROMA_PATH, 'apache_issues.csv')
+tasks = csv_to_tasks(os.path.join(CHROMA_PATH, 'apache_issues.csv'))
 
 ids, documents, metadatas = tasks_to_records(tasks)
 
-load_tasks_to_chroma(collection=collection, tasks=tasks)
+# load_tasks_to_chroma(collection=collection, tasks=tasks)
 
 query_text = task_to_document(RetrievalTask.model_validate({'name': 'Вынести отправку webhook в отдельный клиент', 'desc': 'Сетевой вызов внешнего webhook сейчас выполняется прямо внутри бизнес-логики завершения счета, из-за чего усложняется сопровождение и снижается изоляция интеграционного кода. Нужно выделить отправку webhook в отдельный клиент, чтобы отделить интеграцию от доменной логики и упростить дальнейшее развитие обработки внешних уведомлений.', 'prio': 'Highest', 'label': 'Bug'}
                                                            ))
