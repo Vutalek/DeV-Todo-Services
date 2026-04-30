@@ -56,7 +56,7 @@ def task_to_metadata(task: RetrievalTask) -> dict:
     days = compute_lead_time_hours(task.created_at, task.finished_at)
 
     return {
-        'desc': task.desc,
+        'name': task.name,
         'labels': task.label,
         'prio': task.prio,
         'created_at': task.created_at,
