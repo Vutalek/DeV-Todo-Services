@@ -1,2 +1,2 @@
-{"model_name":"openai/gpt-5.4","score":-0.3333333333333333,"correctness":-0.3333333333333333,"completeness":-0.6666666666666666,"clarity":0.0}
-{"model_name":"google/gemini-3.1-pro-preview","score":0.6666666666666666,"correctness":0.6666666666666666,"completeness":0.3333333333333333,"clarity":0.0}
+{"model_name":"openai/gpt-5.4","score":-0.3,"correctness":-0.1,"completeness":-0.4,"clarity":0.3}
+{"model_name":"google/gemini-3.1-pro-preview","score":0.4,"correctness":0.4,"completeness":0.3,"clarity":0.3}
