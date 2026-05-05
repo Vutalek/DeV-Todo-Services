@@ -44,6 +44,9 @@ RUN mkdir -p /app/db/chroma_db && chown -R appuser:appuser /app/db
 # Copy the source code into the container.
 COPY --chown=appuser:appuser . .
 
+# Run Apache issues parser to populate initial data (as root for write permissions)
+RUN python db/parse_apache_issues.py && chown -R appuser:appuser /app/db
+
 # Switch to the non-privileged user to run the application.
 USER appuser
 
