@@ -41,6 +41,9 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 # Create chroma_db directory for RAG database persistence (before switching user)
 RUN mkdir -p /app/db/chroma_db && chown -R appuser:appuser /app/db
 
+# Load apache issues
+RUN python db/parse_apache_issues.py
+
 # Copy the source code into the container.
 COPY --chown=appuser:appuser . .
 
