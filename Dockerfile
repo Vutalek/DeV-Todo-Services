@@ -38,14 +38,14 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     --mount=type=bind,source=requirements.txt,target=requirements.txt \
     python -m pip install -r requirements.txt
 
-# Switch to the non-privileged user to run the application.
-USER appuser
+# Create chroma_db directory for RAG database persistence (before switching user)
+RUN mkdir -p /app/db/chroma_db && chown -R appuser:appuser /app/db
 
 # Copy the source code into the container.
-COPY . .
+COPY --chown=appuser:appuser . .
 
-# Create chroma_db directory for RAG database persistence
-RUN mkdir -p /app/db/chroma_db
+# Switch to the non-privileged user to run the application.
+USER appuser
 
 # Expose the port that the application listens on.
 EXPOSE 8000
