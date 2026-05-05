@@ -8,6 +8,7 @@ from .retrieval import (
     collection,
     ef,
     CHROMA_PATH,
+    client,
 )
 
 __all__ = [
@@ -22,4 +23,5 @@ __all__ = [
     "collection",
     "ef",
     "CHROMA_PATH",
+    "client",
 ]
