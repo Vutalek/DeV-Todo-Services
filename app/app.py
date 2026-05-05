@@ -8,15 +8,16 @@ from typing import Literal, List, Type
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
+import chromadb
 
 # Add parent directory to path for db imports
 APP_DIR = Path(__file__).parent.resolve()
 BASE_DIR = APP_DIR.parent
 sys.path.insert(0, str(BASE_DIR))
 
+from db.embedding import PplxEmbedding
 from db.handler_data import RetrievalTask, task_to_document, task_to_metadata
 from db.bm25 import BM25TaskSearch, tasks_to_records, rrf_fusion
-from db.retrieval import collection, CHROMA_PATH
 
 load_dotenv()
 
@@ -54,8 +55,15 @@ client = OpenAI(
     api_key=ROUTER_API_KEY
 )
 
-# Ensure chroma_db directory exists
+# Initialize RAG system
+CHROMA_PATH = BASE_DIR / 'db' / 'chroma_db'
 CHROMA_PATH.mkdir(parents=True, exist_ok=True)
+
+client_chroma = chromadb.PersistentClient(path=str(CHROMA_PATH))
+
+ef = PplxEmbedding(model='perplexity/pplx-embed-v1-0.6b', client=client)
+collection = client_chroma.get_or_create_collection(
+    name='TODO', embedding_function=ef)
 
 # Store for BM25 search
 tasks_store = []
