@@ -1,13 +1,13 @@
 import requests
 from dotenv import load_dotenv
 from pathlib import Path
-from embedding import PplxEmbedding
+from .embedding import PplxEmbedding
 import chromadb
 from openai import OpenAI
-from handler_data import RetrievalTask
+from .handler_data import RetrievalTask
 import os
-from handler_data import task_to_document, csv_to_tasks, load_tasks_to_chroma
-from bm25 import BM25TaskSearch, tasks_to_records, rrf_fusion
+from .handler_data import task_to_document, csv_to_tasks, load_tasks_to_chroma
+from .bm25 import BM25TaskSearch, tasks_to_records, rrf_fusion
 load_dotenv()
 
 
