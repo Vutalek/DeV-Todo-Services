@@ -16,7 +16,7 @@ BASE_DIR = APP_DIR.parent
 sys.path.insert(0, str(BASE_DIR))
 
 from db.embedding import PplxEmbedding
-from db.handler_data import RetrievalTask, task_to_document, task_to_metadata, csv_to_tasks
+from db.handler_data import RetrievalTask, task_to_document, task_to_metadata
 from db.bm25 import BM25TaskSearch, tasks_to_records, rrf_fusion
 
 load_dotenv()
@@ -68,9 +68,6 @@ collection = client_chroma.get_or_create_collection(
 # Store for BM25 search
 tasks_store = []
 bm25_index = None
-tasks = csv_to_tasks(os.path.join(CHROMA_PATH, 'apache_issues.csv'))
-
-ids, documents, metadatas = tasks_to_records(tasks)
 
 
 def update_bm25_index():
