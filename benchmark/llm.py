@@ -12,7 +12,6 @@ client = OpenAI(
     base_url=OPENROUTER_BASE_URL,
     api_key=OPENROUTER_API_KEY,
     timeout=45.0,
-
 )
 
 
