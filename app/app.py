@@ -192,8 +192,8 @@ def add_or_update_task(task_req: TaskRequest):
         doc = task_to_document(task)
         metadata = task_to_metadata(task)
         
-        # Добавить в ChromaDB
-        task_id = f"task_{len(tasks_store) - 1}_{task.name[:20]}"
+        # Добавить в ChromaDB с простым ID форматом
+        task_id = f"task_{len(tasks_store) - 1}"
         collection.add(
             ids=[task_id],
             documents=[doc],
@@ -256,24 +256,36 @@ def search_tasks(search_req: SearchRequest):
         # Гибридный поиск (RRF fusion)
         hybrid_results = rrf_fusion(vector_results, bm25_results, k=60, top_n=search_req.n_results)
         
-        # Обогатить результаты метаданными
+        # Обогатить результаты метаданными (исключая дубликаты)
         enriched_results = []
+        seen_task_indices = set()
+        
         for result in hybrid_results:
-            # Найти задачу по ID
-            for i, task in enumerate(tasks_store):
-                if result['id'] == f"task_{i}_{task.name[:20]}" or result['id'].startswith(f"task_{i}"):
-                    enriched_results.append({
-                        "task_id": result['id'],
-                        "name": task.name,
-                        "description": task.desc,
-                        "priority": task.prio,
-                        "label": task.label,
-                        "created_at": task.created_at or "not set",
-                        "finished_at": task.finished_at or "not set",
-                        "hybrid_score": float(result.get('hybrid_score', 0)),
-                        "bm25_score": float(next((r['bm25_score'] for r in bm25_results if r['id'] == result['id']), 0)),
-                    })
-                    break
+            # Извлечь индекс задачи из ID
+            try:
+                task_idx = int(result['id'].split('_')[1])
+            except (IndexError, ValueError):
+                continue
+            
+            # Пропустить если уже видели эту задачу
+            if task_idx in seen_task_indices:
+                continue
+            seen_task_indices.add(task_idx)
+            
+            # Получить задачу из хранилища
+            if task_idx < len(tasks_store):
+                task = tasks_store[task_idx]
+                enriched_results.append({
+                    "task_id": result['id'],
+                    "name": task.name,
+                    "description": task.desc,
+                    "priority": task.prio,
+                    "label": task.label,
+                    "created_at": task.created_at or "not set",
+                    "finished_at": task.finished_at or "not set",
+                    "hybrid_score": float(result.get('hybrid_score', 0)),
+                    "bm25_score": float(next((r['bm25_score'] for r in bm25_results if r['id'] == result['id']), 0)),
+                })
         
         return {
             "status": "success",
