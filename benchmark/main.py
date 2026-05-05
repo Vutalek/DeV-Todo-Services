@@ -10,11 +10,11 @@ from config import (
     DEFAULT_CANDIDATE_PROMPT_PATH,
     DEFAULT_JUDGE_PROMPT_PATH,
 )
-from io_utils import read_jsonl, write_jsonl, write_json, load_text
+from io_utils import read_jsonl, write_jsonl, write_json, load_text, read_calibration_tables
 from llm import run_candidate, run_judge
 from evaluator import average_judge_results
 from aggregator import aggregate_results
-from models import CandidateRunResult
+from models import CandidateRunResult, CalibrationTable
 
 
 def parse_args() -> argparse.Namespace:
@@ -79,6 +79,8 @@ def main() -> None:
     candidate_prompt = load_text(args.candidate_system_prompt)
     judge_prompt = load_text(args.judge_system_prompt)
 
+    calibration_tables = read_calibration_tables(f"{args.output_dir}/calibration_tables.jsonl")
+
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -115,6 +117,22 @@ def main() -> None:
                     answer=candidate_result["response"],
                     max_tokens=args.judge_max_tokens,
                 )
+
+                judge_calibration = None
+                for table in calibration_tables:
+                    if table.model_name == judge_model:
+                        judge_calibration = table
+                if judge_calibration is not None:
+                    judge_result["scores"]["score"] -= judge_calibration.score
+                    judge_result["scores"]["correctness"] -= judge_calibration.correctness
+                    judge_result["scores"]["completeness"] -= judge_calibration.completeness
+                    judge_result["scores"]["clarity"] -= judge_calibration.clarity
+
+                    judge_result["scores"]["score"] = min(max(judge_result["scores"]["score"], 0), 5)
+                    judge_result["scores"]["correctness"] = min(max(judge_result["scores"]["correctness"], 0), 5)
+                    judge_result["scores"]["completeness"] = min(max(judge_result["scores"]["completeness"], 0), 5)
+                    judge_result["scores"]["clarity"] = min(max(judge_result["scores"]["clarity"], 0), 5)
+
                 judge_results.append(judge_result)
 
             avg_scores = average_judge_results(judge_results)
