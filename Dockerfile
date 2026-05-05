@@ -44,6 +44,9 @@ USER appuser
 # Copy the source code into the container.
 COPY . .
 
+# Create chroma_db directory for RAG database persistence
+RUN mkdir -p db/chroma_db
+
 # Expose the port that the application listens on.
 EXPOSE 8000
 
