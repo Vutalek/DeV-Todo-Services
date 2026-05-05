@@ -38,9 +38,9 @@ def compute_lead_time_hours(created_at: str | None, finished_at: str | None) -> 
 
     days = int(np.busday_count(start_date, end_date))
     if days == 0:
-        return (finished - created).total_seconds() / 86400
+        return float((finished - created).total_seconds() / 86400)
 
-    return days
+    return float(days)
 
 
 def task_to_document(task: RetrievalTask) -> str:
@@ -59,9 +59,9 @@ def task_to_metadata(task: RetrievalTask) -> dict:
         'name': task.name,
         'labels': task.label,
         'prio': task.prio,
-        'created_at': task.created_at,
-        'finished_at': task.finished_at,
-        'business_days': days,
+        'created_at': task.created_at or '',
+        'finished_at': task.finished_at or '',
+        'business_days': int(days) if days is not None else 0,
     }
 
 

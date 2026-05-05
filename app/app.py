@@ -268,10 +268,10 @@ def search_tasks(search_req: SearchRequest):
                         "description": task.desc,
                         "priority": task.prio,
                         "label": task.label,
-                        "created_at": task.created_at,
-                        "finished_at": task.finished_at,
-                        "hybrid_score": result.get('hybrid_score', 0),
-                        "bm25_score": next((r['bm25_score'] for r in bm25_results if r['id'] == result['id']), 0),
+                        "created_at": task.created_at or "not set",
+                        "finished_at": task.finished_at or "not set",
+                        "hybrid_score": float(result.get('hybrid_score', 0)),
+                        "bm25_score": float(next((r['bm25_score'] for r in bm25_results if r['id'] == result['id']), 0)),
                     })
                     break
         
