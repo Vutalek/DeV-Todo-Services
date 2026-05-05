@@ -62,26 +62,26 @@ chroma_data = collection.get(ids=documents_id)
 docs = chroma_data['documents']
 metadatas = chroma_data['metadatas']
 
-response = requests.post(
-    'https://openrouter.ai/api/v1/rerank',
-    headers={
-        'Authorization': f"Bearer {os.getenv('ROUTER_API_KEY')}",
-        'Content-Type': 'application/json'
-    },
-    json={
-        'model': 'cohere/rerank-4-fast',
-        'query': query_text,
-        'documents': docs,
-        'top_n': 5
-    }
-)
+# response = requests.post(
+#     'https://openrouter.ai/api/v1/rerank',
+#     headers={
+#         'Authorization': f"Bearer {os.getenv('ROUTER_API_KEY')}",
+#         'Content-Type': 'application/json'
+#     },
+#     json={
+#         'model': 'cohere/rerank-4-fast',
+#         'query': query_text,
+#         'documents': docs,
+#         'top_n': 5
+#     }
+# )
 
-reranked = response.json()
-result = [{'text': r['document']['text'], 'metadata': metadatas[r['index']]}
-          for r in reranked['results']
-          ]
+# reranked = response.json()
+# result = [{'text': r['document']['text'], 'metadata': metadatas[r['index']]}
+#           for r in reranked['results']
+#           ]
 
 
-for item in result:
-    print(
-        f"{item['text']}\ntime_spent: {item['metadata']['business_days']} days")
+# for item in result:
+#     print(
+#         f"{item['text']}\ntime_spent: {item['metadata']['business_days']} days")
