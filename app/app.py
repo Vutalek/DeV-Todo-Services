@@ -46,7 +46,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-MODEL = "deepseek/deepseek-v3.2"
+MODEL = "deepseek/deepseek-v4-flash"
+RERANK_MODEL = "cohere/rerank-4-fast"
+RERANK_URL = "https://openrouter.ai/api/v1/rerank"
+RERANK_TOP_N = 5
 
 prompt_path = os.path.join(BASE_DIR, 'prompt', 'prompt.txt')
 
@@ -182,6 +185,152 @@ def get_trello_data():
             TRELLO_CACHE_TTL_SECONDS
 
         return data
+
+
+def get_chroma_tasks_by_ids(task_ids: list[str]) -> list[dict]:
+    if not task_ids:
+        return []
+
+    with chroma_lock:
+        chroma_data = collection.get(
+            ids=task_ids,
+            include=["documents", "metadatas"],
+        )
+
+    payloads_by_id = {}
+    for task_id, document, metadata in zip(
+        chroma_data.get("ids", []),
+        chroma_data.get("documents", []),
+        chroma_data.get("metadatas", []),
+    ):
+        payloads_by_id[task_id] = {
+            "id": task_id,
+            "document": document or "",
+            "metadata": metadata or {},
+        }
+
+    return [
+        payloads_by_id[task_id]
+        for task_id in task_ids
+        if task_id in payloads_by_id
+    ]
+
+
+def task_payload_to_rerank_document(task: dict) -> str:
+    metadata = task.get("metadata") or {}
+    document = task.get("document") or ""
+    name = metadata.get("name") or get_document_field(document, "Название")
+    desc = metadata.get("desc") or get_document_field(document, "Описание")
+    priority = metadata.get("prio") or get_document_field(document, "Приоритет")
+    label = metadata.get("labels") or get_document_field(document, "Метка")
+
+    return "\n".join([
+        f"Name: {name}",
+        f"Description: {desc}",
+        f"Priority: {priority}",
+        f"Label: {label}",
+        f"Business days: {metadata.get('business_days', 0)}",
+    ])
+
+
+def task_payload_to_search_result(
+    task: dict,
+    reranker_score: float | None = None,
+) -> dict:
+    metadata = task.get("metadata") or {}
+    document = task.get("document") or ""
+    name = metadata.get("name") or get_document_field(document, "Название")
+    desc = metadata.get("desc") or get_document_field(document, "Описание") or document
+    priority = metadata.get("prio") or get_document_field(document, "Приоритет")
+    label = metadata.get("labels") or get_document_field(document, "Метка")
+
+    return {
+        "name": name,
+        "desc": desc,
+        "priority": priority,
+        "label": label,
+        "reranker_score": reranker_score,
+        "business_days": metadata.get("business_days", 0),
+    }
+
+
+def rerank_tasks(
+    query: str,
+    tasks: list[dict],
+    top_n: int = RERANK_TOP_N,
+) -> tuple[list[dict], str | None]:
+    if not tasks:
+        return [], None
+
+    if not ROUTER_API_KEY:
+        return [], "Reranker skipped: ROUTER_API_KEY is not set"
+
+    documents = [task_payload_to_rerank_document(task) for task in tasks]
+    payload = {
+        "model": RERANK_MODEL,
+        "query": query,
+        "documents": documents,
+        "top_n": top_n,
+    }
+    headers = {
+        "Authorization": f"Bearer {ROUTER_API_KEY}",
+        "Content-Type": "application/json",
+    }
+
+    try:
+        response = requests.post(
+            RERANK_URL,
+            headers=headers,
+            json=payload,
+            timeout=20,
+        )
+    except requests.Timeout:
+        return [], "Reranker fallback: OpenRouter request timed out"
+    except requests.RequestException as exc:
+        return [], f"Reranker fallback: OpenRouter request failed: {exc}"
+
+    if response.status_code != 200:
+        return [], (
+            "Reranker fallback: OpenRouter returned "
+            f"HTTP {response.status_code}: {response.text}"
+        )
+
+    try:
+        response_data = response.json()
+    except ValueError:
+        return [], "Reranker fallback: OpenRouter returned invalid JSON"
+
+    results = response_data.get("results")
+    if not isinstance(results, list):
+        return [], "Reranker fallback: OpenRouter response has no results list"
+
+    reranked_tasks = []
+    for result in results:
+        if not isinstance(result, dict):
+            return [], "Reranker fallback: invalid result item"
+
+        if "index" not in result:
+            return [], "Reranker fallback: result item has no index"
+        if "relevance_score" not in result:
+            return [], "Reranker fallback: result item has no relevance_score"
+
+        index = result["index"]
+        if not isinstance(index, int) or index < 0 or index >= len(tasks):
+            return [], "Reranker fallback: result index is out of range"
+
+        try:
+            reranker_score = float(result["relevance_score"])
+        except (TypeError, ValueError):
+            return [], "Reranker fallback: relevance_score is not numeric"
+
+        reranked_tasks.append(
+            task_payload_to_search_result(
+                tasks[index],
+                reranker_score=reranker_score,
+            )
+        )
+
+    return reranked_tasks[:top_n], None
 
 
 def create_dynamic_task_model(columns: list, labels: list) -> Type[BaseModel]:
@@ -335,13 +484,13 @@ def search_tasks(search_req: SearchRequest):
             # Подготовить query
             query_text = search_req.query
             bm25_snapshot = bm25_index
-            tasks_snapshot = dict(tasks_store)
 
         # Выполнить BM25 поиск
+        candidate_count = max(search_req.n_results, RERANK_TOP_N)
         where_days = (search_req.min_days, search_req.max_days)
         bm25_results = bm25_snapshot.search(
             query_text,
-            n_results=search_req.n_results,
+            n_results=candidate_count,
             where_days=where_days,
         )
 
@@ -350,7 +499,7 @@ def search_tasks(search_req: SearchRequest):
             with chroma_lock:
                 vector_results = collection.query(
                     query_texts=[query_text],
-                    n_results=search_req.n_results,
+                    n_results=candidate_count,
                     include=['distances'],
                     where={
                         '$and': [
@@ -365,42 +514,44 @@ def search_tasks(search_req: SearchRequest):
 
         # Гибридный поиск (RRF fusion)
         hybrid_results = rrf_fusion(
-            vector_results, bm25_results, k=60, top_n=search_req.n_results)
+            vector_results, bm25_results, k=60, top_n=candidate_count)
 
-        # Обогатить результаты метаданными (исключая дубликаты)
-        enriched_results = []
+        candidate_ids = []
         seen_task_ids = set()
 
         for result in hybrid_results:
-            # Пропустить если уже видели эту задачу
             task_id = result['id']
             if task_id in seen_task_ids:
                 continue
             seen_task_ids.add(task_id)
+            candidate_ids.append(task_id)
 
-            # Получить задачу из хранилища
-            task = tasks_snapshot.get(task_id)
-            if task is not None:
-                task_metadata = task_to_metadata(task)
-                enriched_results.append({
-                    "task_id": task_id,
-                    "name": task.name,
-                    "business_days": task_metadata["business_days"],
-                    "description": task.desc,
-                    "priority": task.prio,
-                    "label": task.label,
-                    "created_at": task.created_at or "not set",
-                    "finished_at": task.finished_at or "not set",
-                    "hybrid_score": float(result.get('hybrid_score', 0)),
-                    "bm25_score": float(next((r['bm25_score'] for r in bm25_results if r['id'] == task_id), 0)),
-                })
+        candidate_tasks = get_chroma_tasks_by_ids(candidate_ids)
+        reranked_results, warning = rerank_tasks(
+            query_text,
+            candidate_tasks,
+            top_n=RERANK_TOP_N,
+        )
 
-        return {
+        if warning is not None:
+            search_results = [
+                task_payload_to_search_result(task)
+                for task in candidate_tasks[:RERANK_TOP_N]
+            ]
+        else:
+            search_results = reranked_results
+
+        response = {
             "status": "success",
             "query": query_text,
-            "results_count": len(enriched_results),
-            "results": enriched_results
+            "results_count": len(search_results),
+            "results": search_results
         }
+
+        if warning is not None:
+            response["warning"] = warning
+
+        return response
 
     except Exception as e:
         return {
