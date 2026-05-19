@@ -3,7 +3,7 @@ name = "todo"
 version = "0.1.0"
 description = "TODO dev"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.14"
 dependencies = [
     "chromadb>=1.5.8",
     "dotenv>=0.9.9",
@@ -14,6 +14,12 @@ dependencies = [
     "pandas>=3.0.2",
     "rank-bm25>=0.2.2",
     "requests>=2.33.1",
-    "trello>=0.11.2",
+    "trello>=0.9.7.3,<0.10",
     "uvicorn>=0.43.0",
+]
+
+[tool.uv]
+environments = [
+    "sys_platform == 'darwin'",
+    "sys_platform == 'linux'",
 ]

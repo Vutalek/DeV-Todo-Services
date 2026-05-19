@@ -23,7 +23,10 @@ def parse_datetime(value: str | None) -> datetime | None:
     if not value:
         return None
 
-    return datetime.strptime(value, '%Y-%m-%dT%H:%M:%S.%f%z')
+    if value.endswith('Z'):
+        value = f'{value[:-1]}+00:00'
+
+    return datetime.fromisoformat(value)
 
 
 def compute_lead_time_hours(created_at: str | None, finished_at: str | None) -> float | None:
@@ -57,6 +60,7 @@ def task_to_metadata(task: RetrievalTask) -> dict:
 
     return {
         'name': task.name,
+        'desc': task.desc,
         'labels': task.label,
         'prio': task.prio,
         'created_at': task.created_at or '',
