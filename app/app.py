@@ -91,6 +91,7 @@ trello_cache: dict[str, object] = {
     "expires_at": 0.0,
     "data": None,
 }
+trello_cache_refresh_lock = RLock()
 TRELLO_CACHE_TTL_SECONDS = 300
 
 
@@ -157,6 +158,13 @@ def get_trello_data():
         if cached_data is not None and now < trello_cache["expires_at"]:
             return cached_data
 
+    with trello_cache_refresh_lock:
+        now = time.monotonic()
+        with trello_cache_lock:
+            cached_data = trello_cache["data"]
+            if cached_data is not None and now < trello_cache["expires_at"]:
+                return cached_data
+
         lists_url = f"https://api.trello.com/1/boards/{BOARD_ID}/lists"
         labels_url = f"https://api.trello.com/1/boards/{BOARD_ID}/labels"
         query = {'key': TRELLO_KEY, 'token': TRELLO_TOKEN}
@@ -180,9 +188,10 @@ def get_trello_data():
         lab_map = {lb['name']: lb['id'] for lb in labels_data if lb['name']}
 
         data = (col_map, lab_map)
-        trello_cache["data"] = data
-        trello_cache["expires_at"] = time.monotonic() + \
-            TRELLO_CACHE_TTL_SECONDS
+        with trello_cache_lock:
+            trello_cache["data"] = data
+            trello_cache["expires_at"] = time.monotonic() + \
+                TRELLO_CACHE_TTL_SECONDS
 
         return data
 
@@ -221,7 +230,8 @@ def task_payload_to_rerank_document(task: dict) -> str:
     document = task.get("document") or ""
     name = metadata.get("name") or get_document_field(document, "Название")
     desc = metadata.get("desc") or get_document_field(document, "Описание")
-    priority = metadata.get("prio") or get_document_field(document, "Приоритет")
+    priority = metadata.get("prio") or get_document_field(
+        document, "Приоритет")
     label = metadata.get("labels") or get_document_field(document, "Метка")
 
     return "\n".join([
@@ -240,8 +250,10 @@ def task_payload_to_search_result(
     metadata = task.get("metadata") or {}
     document = task.get("document") or ""
     name = metadata.get("name") or get_document_field(document, "Название")
-    desc = metadata.get("desc") or get_document_field(document, "Описание") or document
-    priority = metadata.get("prio") or get_document_field(document, "Приоритет")
+    desc = metadata.get("desc") or get_document_field(
+        document, "Описание") or document
+    priority = metadata.get("prio") or get_document_field(
+        document, "Приоритет")
     label = metadata.get("labels") or get_document_field(document, "Метка")
 
     return {
@@ -303,6 +315,8 @@ def rerank_tasks(
     results = response_data.get("results")
     if not isinstance(results, list):
         return [], "Reranker fallback: OpenRouter response has no results list"
+    if not results:
+        return [], "Reranker fallback: OpenRouter returned no reranked results"
 
     reranked_tasks = []
     for result in results:
@@ -346,7 +360,7 @@ def create_dynamic_task_model(columns: list, labels: list) -> Type[BaseModel]:
         label=(List[TrelloLabels], Field(description="Метки задачи")),
         prio=(int, Field(ge=1, le=5, description="Приоритет от 1 до 5")),
         time=(int, Field(gt=0, description="Время в часах")),
-        roadmap=(str, Field(default="", max_length=100,
+        roadmap=(str, Field(default="", max_length=1200,
                             description="2-5 конкретных шагов без повторения описания")),
         column=(TrelloColumns, Field(
             description='Колонка в которой будет находиться задача')),
