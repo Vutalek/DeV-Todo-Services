@@ -4,6 +4,7 @@ import pandas as pd
 import os
 
 BASE_DIR = os.path.dirname(__file__)
+OUTPUT_PATH = os.path.join(BASE_DIR, 'chroma_db', 'apache_issues.csv')
 BASE_URL = 'https://issues.apache.org/jira'
 SEARCH_URL = f'{BASE_URL}/rest/api/2/search'
 
@@ -23,6 +24,7 @@ PAGE_SIZE = 1000
 
 rows = []
 start_at = 0
+jira_error = None
 
 while len(rows) < LIMIT:
     params = {
@@ -32,15 +34,20 @@ while len(rows) < LIMIT:
         'fields': ','.join(FIELDS),
     }
 
-    response = requests.get(
-        SEARCH_URL,
-        params=params,
-        headers={'Accept': 'application/json'},
-        timeout=30,
-    )
-    response.raise_for_status()
+    try:
+        response = requests.get(
+            SEARCH_URL,
+            params=params,
+            headers={'Accept': 'application/json'},
+            timeout=30,
+        )
+        response.raise_for_status()
+        data = response.json()
+    except (requests.RequestException, ValueError) as exc:
+        jira_error = exc
+        print(f'Warning: failed to load Jira issues: {exc}')
+        break
 
-    data = response.json()
     issues = data.get('issues', [])
 
     if not issues:
@@ -53,8 +60,14 @@ while len(rows) < LIMIT:
             'url': f"{BASE_URL}/browse/{issue['key']}",
             'desc': f.get('description'),
             'name': f.get('summary'),
-            'issue_type': f.get('issuetype', {}).get('name') if f.get('issuetype') else None,
-            'priority': f.get('priority', {}).get('name') if f.get('priority') else None,
+            'issue_type': (
+                f.get('issuetype', {}).get('name')
+                if f.get('issuetype') else None
+            ),
+            'priority': (
+                f.get('priority', {}).get('name')
+                if f.get('priority') else None
+            ),
             'created': f.get('created'),
             'resolved': f.get('resolutiondate'),
         })
@@ -71,6 +84,13 @@ while len(rows) < LIMIT:
 
     time.sleep(0.2)
 
-df = pd.DataFrame(rows)
-df.to_csv(os.path.join(BASE_DIR,
-          'chroma_db', 'apache_issues.csv'), index=False)
+df = pd.DataFrame(
+    rows,
+    columns=['url', 'desc', 'name', 'issue_type',
+             'priority', 'created', 'resolved'],
+)
+os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
+df.to_csv(OUTPUT_PATH, index=False)
+
+if jira_error is not None:
+    print(f'Warning: wrote {len(rows)} Jira seed rows after error')

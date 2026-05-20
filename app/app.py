@@ -12,18 +12,18 @@ import os
 import requests
 import sys
 import time
-from datetime import datetime, timedelta, timezone
 from threading import RLock
 from pathlib import Path
 from uuid import uuid4
-from zoneinfo import ZoneInfo
 from openai import AsyncOpenAI, OpenAI
 from pydantic import BaseModel, Field, create_model
 from typing import Literal, List, Type
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
 import chromadb
+from common.deadline import calculate_deadline
 
 # Add parent directory to path for db imports
 APP_DIR = Path(__file__).parent.resolve()
@@ -59,9 +59,6 @@ RERANK_MODEL = "cohere/rerank-4-fast"
 RERANK_URL = "https://openrouter.ai/api/v1/rerank"
 RERANK_TOP_N = 5
 BUSINESS_DAY_HOURS = 8
-WORK_TIMEZONE = ZoneInfo("Europe/Moscow")
-WORKDAY_START_HOUR = 10
-WORKDAY_END_HOUR = 18
 
 prompt_path = os.path.join(BASE_DIR, 'prompt', 'prompt.txt')
 
@@ -71,14 +68,14 @@ with open(prompt_path, 'r', encoding='utf-8') as f:
 
 client = OpenAI(
     base_url="https://openrouter.ai/api/v1",
-    api_key=ROUTER_API_KEY,
+    api_key=ROUTER_API_KEY or "missing-router-api-key",
     timeout=30.0,
     max_retries=2,
 )
 
 async_client = AsyncOpenAI(
     base_url="https://openrouter.ai/api/v1",
-    api_key=ROUTER_API_KEY,
+    api_key=ROUTER_API_KEY or "missing-router-api-key",
     timeout=30.0,
     max_retries=2,
 )
@@ -135,10 +132,39 @@ def get_document_field(document: str | None, field_name: str) -> str:
     return ""
 
 
+def normalize_chroma_metadata(metadata: dict | None, document: str | None) -> dict:
+    metadata = dict(metadata or {})
+
+    if metadata.get("lead_time_hours") and metadata.get("business_days"):
+        return metadata
+
+    if not metadata.get("created_at") or not metadata.get("finished_at"):
+        return metadata
+
+    try:
+        task = RetrievalTask(
+            name=metadata.get("name") or get_document_field(document, "Название"),
+            desc=metadata.get("desc") or get_document_field(document, "Описание"),
+            prio=metadata.get("prio") or get_document_field(document, "Приоритет"),
+            label=metadata.get("labels") or get_document_field(document, "Метка"),
+            created_at=metadata.get("created_at"),
+            finished_at=metadata.get("finished_at"),
+        )
+        recalculated = task_to_metadata(task)
+    except Exception:
+        return metadata
+
+    metadata["business_days"] = recalculated["business_days"]
+    metadata["lead_time_hours"] = recalculated["lead_time_hours"]
+    return metadata
+
+
 def load_tasks_from_chroma():
     """Restore in-memory BM25 state from persistent ChromaDB data."""
     with chroma_lock:
         chroma_data = collection.get(include=["documents", "metadatas"])
+
+    metadata_updates = []
 
     with state_lock:
         tasks_store.clear()
@@ -148,7 +174,11 @@ def load_tasks_from_chroma():
             chroma_data.get("documents", []),
             chroma_data.get("metadatas", []),
         ):
-            metadata = metadata or {}
+            original_metadata = dict(metadata or {})
+            metadata = normalize_chroma_metadata(metadata, document)
+            if metadata != original_metadata:
+                metadata_updates.append((task_id, metadata))
+
             tasks_store[task_id] = RetrievalTask(
                 name=metadata.get("name") or get_document_field(
                     document, "Название"),
@@ -163,6 +193,16 @@ def load_tasks_from_chroma():
             )
 
         update_bm25_index_locked()
+
+    if metadata_updates:
+        try:
+            with chroma_lock:
+                collection.update(
+                    ids=[task_id for task_id, _ in metadata_updates],
+                    metadatas=[metadata for _, metadata in metadata_updates],
+                )
+        except Exception as exc:
+            print(f"Failed to update ChromaDB metadata: {exc}")
 
 
 def seed_chroma_if_empty():
@@ -245,10 +285,11 @@ def get_chroma_tasks_by_ids(task_ids: list[str]) -> list[dict]:
         chroma_data.get("documents", []),
         chroma_data.get("metadatas", []),
     ):
+        metadata = normalize_chroma_metadata(metadata, document)
         payloads_by_id[task_id] = {
             "id": task_id,
             "document": document or "",
-            "metadata": metadata or {},
+            "metadata": metadata,
         }
 
     return [
@@ -273,7 +314,7 @@ def task_payload_to_rerank_document(task: dict) -> str:
         f"Priority: {priority}",
         f"Label: {label}",
         f"Business days: {metadata.get('business_days', 0)}",
-        f"Time hours: {business_days_to_time_hours(metadata.get('business_days', 0))}",
+        f"Time hours: {task_metadata_to_time_hours(metadata)}",
     ])
 
 
@@ -289,75 +330,17 @@ def business_days_to_time_hours(business_days) -> int | None:
     return max(1, round(days * BUSINESS_DAY_HOURS))
 
 
-def move_to_work_time(value: datetime) -> datetime:
-    current = value.astimezone(WORK_TIMEZONE)
+def task_metadata_to_time_hours(metadata: dict) -> int | None:
+    lead_time_hours = metadata.get("lead_time_hours")
+    try:
+        hours = float(lead_time_hours)
+    except (TypeError, ValueError):
+        hours = 0
 
-    if current.weekday() >= 5:
-        days_until_monday = 7 - current.weekday()
-        current = current + timedelta(days=days_until_monday)
-        return current.replace(
-            hour=WORKDAY_START_HOUR,
-            minute=0,
-            second=0,
-            microsecond=0,
-        )
+    if hours > 0:
+        return max(1, round(hours))
 
-    workday_start = current.replace(
-        hour=WORKDAY_START_HOUR,
-        minute=0,
-        second=0,
-        microsecond=0,
-    )
-    workday_end = current.replace(
-        hour=WORKDAY_END_HOUR,
-        minute=0,
-        second=0,
-        microsecond=0,
-    )
-
-    if current < workday_start:
-        return workday_start
-
-    if current >= workday_end:
-        current = current + timedelta(days=1)
-        while current.weekday() >= 5:
-            current = current + timedelta(days=1)
-        return current.replace(
-            hour=WORKDAY_START_HOUR,
-            minute=0,
-            second=0,
-            microsecond=0,
-        )
-
-    return current
-
-
-def add_working_hours(start: datetime, hours: int) -> datetime:
-    current = move_to_work_time(start)
-    remaining = timedelta(hours=hours)
-
-    while remaining > timedelta(0):
-        workday_end = current.replace(
-            hour=WORKDAY_END_HOUR,
-            minute=0,
-            second=0,
-            microsecond=0,
-        )
-        available = workday_end - current
-
-        if remaining <= available:
-            return current + remaining
-
-        remaining -= available
-        current = move_to_work_time(workday_end + timedelta(seconds=1))
-
-    return current
-
-
-def calculate_deadline(time_hours: int, created_at: datetime | None = None) -> str:
-    created = created_at or datetime.now(WORK_TIMEZONE)
-    deadline = add_working_hours(created, time_hours)
-    return deadline.astimezone(timezone.utc).isoformat()
+    return business_days_to_time_hours(metadata.get("business_days", 0))
 
 
 def task_payload_to_search_result(
@@ -381,7 +364,7 @@ def task_payload_to_search_result(
         "label": label,
         "reranker_score": reranker_score,
         "business_days": business_days,
-        "time_hours": business_days_to_time_hours(business_days),
+        "time_hours": task_metadata_to_time_hours(metadata),
     }
 
 
@@ -526,6 +509,18 @@ def heartbeat():
 
 @app.post("/app/v1/send")
 async def sendtask(message: Message):
+    if not ROUTER_API_KEY:
+        return JSONResponse(
+            status_code=502,
+            content={
+                "status": "error",
+                "message": (
+                    "OpenRouter task generation failed: "
+                    "ROUTER_API_KEY is not set"
+                ),
+            },
+        )
+
     col_map, lab_map = await asyncio.to_thread(get_trello_data)
 
     labels_str = ", ".join(lab_map.keys())
@@ -535,27 +530,39 @@ async def sendtask(message: Message):
         columns=list(col_map.keys()),
         labels=list(lab_map.keys())
     )
-    response = await async_client.chat.completions.parse(
-        model=MODEL,
-        messages=[
-            {
-                "role": "system", "content": prompt.format(
-                    labels_list=labels_str,
-                    columns_list=columns_str
-                )
-            },
-            {
-                "role": "user", "content": message.text
-            },
-        ],
-        temperature=0.1,
-        top_p=0.8,
-        frequency_penalty=0.3,
-        max_tokens=1500,
-        response_format=Task,
-    )
+    try:
+        response = await async_client.chat.completions.parse(
+            model=MODEL,
+            messages=[
+                {
+                    "role": "system", "content": prompt.format(
+                        labels_list=labels_str,
+                        columns_list=columns_str
+                    )
+                },
+                {
+                    "role": "user", "content": message.text
+                },
+            ],
+            temperature=0.1,
+            top_p=0.8,
+            frequency_penalty=0.3,
+            max_tokens=1500,
+            response_format=Task,
+        )
 
-    parsed_task = response.choices[0].message.parsed
+        parsed_task = response.choices[0].message.parsed
+        if parsed_task is None:
+            raise ValueError("OpenRouter returned no parsed task")
+    except Exception as exc:
+        return JSONResponse(
+            status_code=502,
+            content={
+                "status": "error",
+                "message": f"OpenRouter task generation failed: {exc}",
+            },
+        )
+
     result = parsed_task.model_dump()
     result["deadline"] = calculate_deadline(parsed_task.time)
 
@@ -602,10 +609,13 @@ def add_or_update_task(task_req: TaskRequest):
         }
 
     except Exception as e:
-        return {
-            "status": "error",
-            "message": f"Failed to add task: {str(e)}"
-        }
+        return JSONResponse(
+            status_code=502,
+            content={
+                "status": "error",
+                "message": f"Failed to add task to search index: {str(e)}",
+            },
+        )
 
 
 @app.post("/app/v1/search")

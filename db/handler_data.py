@@ -4,6 +4,8 @@ from datetime import datetime
 import pandas as pd
 import numpy as np
 
+BUSINESS_DAY_HOURS = 8
+
 
 class RetrievalTask(BaseModel):
     name: str
@@ -29,21 +31,46 @@ def parse_datetime(value: str | None) -> datetime | None:
     return datetime.fromisoformat(value)
 
 
-def compute_lead_time_hours(created_at: str | None, finished_at: str | None) -> float | None:
+def compute_lead_time_hours(
+    created_at: str | None,
+    finished_at: str | None,
+) -> float | None:
     if not created_at or not finished_at:
         return None
 
     created = parse_datetime(created_at)
     finished = parse_datetime(finished_at)
 
+    if finished < created:
+        return None
+
+    return float((finished - created).total_seconds() / 3600)
+
+
+def compute_business_days(
+    created_at: str | None,
+    finished_at: str | None,
+) -> float | None:
+    if not created_at or not finished_at:
+        return None
+
+    created = parse_datetime(created_at)
+    finished = parse_datetime(finished_at)
+
+    if finished < created:
+        return None
+
     start_date = np.datetime64(created.date())
     end_date = np.datetime64(finished.date())
+    full_business_days = int(np.busday_count(start_date, end_date))
 
-    days = int(np.busday_count(start_date, end_date))
-    if days == 0:
-        return float((finished - created).total_seconds() / 86400)
+    if full_business_days == 0:
+        lead_time_hours = compute_lead_time_hours(created_at, finished_at)
+        if lead_time_hours is None:
+            return None
+        return lead_time_hours / BUSINESS_DAY_HOURS
 
-    return float(days)
+    return float(full_business_days)
 
 
 def task_to_document(task: RetrievalTask) -> str:
@@ -56,7 +83,8 @@ def task_to_document(task: RetrievalTask) -> str:
 
 
 def task_to_metadata(task: RetrievalTask) -> dict:
-    days = compute_lead_time_hours(task.created_at, task.finished_at)
+    business_days = compute_business_days(task.created_at, task.finished_at)
+    lead_time_hours = compute_lead_time_hours(task.created_at, task.finished_at)
 
     return {
         'name': task.name,
@@ -65,7 +93,12 @@ def task_to_metadata(task: RetrievalTask) -> dict:
         'prio': task.prio,
         'created_at': task.created_at or '',
         'finished_at': task.finished_at or '',
-        'business_days': int(days) if days is not None else 0,
+        'business_days': (
+            round(business_days, 3) if business_days is not None else 0
+        ),
+        'lead_time_hours': (
+            round(lead_time_hours, 2) if lead_time_hours is not None else 0
+        ),
     }
 
 

@@ -44,8 +44,11 @@ RUN mkdir -p /app/db/chroma_db && chown -R appuser:appuser /app/db
 # Copy the source code into the container.
 COPY --chown=appuser:appuser . .
 
-# Run Apache issues parser to populate initial data (as root for write permissions)
-RUN python db/parse_apache_issues.py && chown -R appuser:appuser /app/db
+# Run Apache issues parser to populate initial data when Jira is reachable.
+# The image must still build if Jira is slow/down; the app can start with an
+# empty Chroma collection and seed later when a CSV exists.
+RUN python db/parse_apache_issues.py || echo "Warning: failed to fetch Jira seed data; continuing without seed CSV"
+RUN chown -R appuser:appuser /app/db
 
 # Switch to the non-privileged user to run the application.
 USER appuser
@@ -53,5 +56,5 @@ USER appuser
 # Expose the port that the application listens on.
 EXPOSE 8000
 
-# Run the application.
-CMD fastapi run app/app.py --port 8000
+# Run the application. Keep one worker because BM25 lives in process memory.
+CMD uvicorn app.app:app --host 0.0.0.0 --port 8000 --workers 1
