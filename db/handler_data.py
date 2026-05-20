@@ -2,7 +2,7 @@ from pydantic import BaseModel, ValidationError
 from typing import Literal
 from datetime import datetime
 import pandas as pd
-import numpy as np
+from common.deadline import calculate_working_hours_between
 
 BUSINESS_DAY_HOURS = 8
 
@@ -44,7 +44,7 @@ def compute_lead_time_hours(
     if finished < created:
         return None
 
-    return float((finished - created).total_seconds() / 3600)
+    return calculate_working_hours_between(created, finished)
 
 
 def compute_business_days(
@@ -60,17 +60,11 @@ def compute_business_days(
     if finished < created:
         return None
 
-    start_date = np.datetime64(created.date())
-    end_date = np.datetime64(finished.date())
-    full_business_days = int(np.busday_count(start_date, end_date))
+    lead_time_hours = compute_lead_time_hours(created_at, finished_at)
+    if lead_time_hours is None:
+        return None
 
-    if full_business_days == 0:
-        lead_time_hours = compute_lead_time_hours(created_at, finished_at)
-        if lead_time_hours is None:
-            return None
-        return lead_time_hours / BUSINESS_DAY_HOURS
-
-    return float(full_business_days)
+    return lead_time_hours / BUSINESS_DAY_HOURS
 
 
 def task_to_document(task: RetrievalTask) -> str:

@@ -50,6 +50,8 @@ COPY --chown=appuser:appuser . .
 RUN python db/parse_apache_issues.py || echo "Warning: failed to fetch Jira seed data; continuing without seed CSV"
 RUN chown -R appuser:appuser /app/db
 
+VOLUME ["/app/db/chroma_db"]
+
 # Switch to the non-privileged user to run the application.
 USER appuser
 

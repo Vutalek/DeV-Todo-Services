@@ -135,9 +135,6 @@ def get_document_field(document: str | None, field_name: str) -> str:
 def normalize_chroma_metadata(metadata: dict | None, document: str | None) -> dict:
     metadata = dict(metadata or {})
 
-    if metadata.get("lead_time_hours") and metadata.get("business_days"):
-        return metadata
-
     if not metadata.get("created_at") or not metadata.get("finished_at"):
         return metadata
 

@@ -58,6 +58,9 @@ jobs:
             # Сборка образа
             docker build -t app .
 
+            # Постоянное хранилище ChromaDB между деплоями
+            docker volume create app-chroma-db >/dev/null
+
             # Останавливаем и удаляем старый контейнер (игнорируем ошибки, если контейнера нет)
             docker stop app 2>/dev/null || true
             docker rm app 2>/dev/null || true
@@ -66,9 +69,26 @@ jobs:
             docker run -d \
               --name app \
               --env-file .env \
+              -v app-chroma-db:/app/db/chroma_db \
               -p 8000:8000 \
               --restart unless-stopped \
               app
+
+            # Проверяем, что новый контейнер реально поднялся
+            for i in $(seq 1 30); do
+              if curl -fsS http://localhost:8000/app/v1/heartbeat >/dev/null; then
+                echo "Healthcheck passed"
+                break
+              fi
+
+              if [ "$i" -eq 30 ]; then
+                echo "Healthcheck failed"
+                docker logs app
+                exit 1
+              fi
+
+              sleep 2
+            done
 
             # Очищаем старые образы
             docker image prune -f
