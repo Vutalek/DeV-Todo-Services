@@ -84,7 +84,8 @@ async_client = AsyncOpenAI(
 CHROMA_PATH = BASE_DIR / 'db' / 'chroma_db'
 CHROMA_PATH.mkdir(parents=True, exist_ok=True)
 SEED_TASKS_LIMIT = 1000
-SEED_TASKS_CSV = CHROMA_PATH / 'apache_issues.csv'
+IMAGE_SEED_TASKS_CSV = BASE_DIR / 'seed' / 'apache_issues.csv'
+LEGACY_SEED_TASKS_CSV = CHROMA_PATH / 'apache_issues.csv'
 
 client_chroma = chromadb.PersistentClient(path=str(CHROMA_PATH))
 
@@ -206,11 +207,17 @@ def seed_chroma_if_empty():
     with chroma_lock:
         current_count = collection.count()
 
-    if current_count > 0 or not SEED_TASKS_CSV.exists():
+    seed_tasks_csv = (
+        IMAGE_SEED_TASKS_CSV
+        if IMAGE_SEED_TASKS_CSV.exists()
+        else LEGACY_SEED_TASKS_CSV
+    )
+
+    if current_count > 0 or not seed_tasks_csv.exists():
         return
 
     try:
-        seed_tasks = csv_to_tasks(str(SEED_TASKS_CSV))[:SEED_TASKS_LIMIT]
+        seed_tasks = csv_to_tasks(str(seed_tasks_csv))[:SEED_TASKS_LIMIT]
         if not seed_tasks:
             return
 
@@ -218,7 +225,7 @@ def seed_chroma_if_empty():
             if collection.count() == 0:
                 load_tasks_to_chroma(collection, seed_tasks)
     except Exception as exc:
-        print(f"Failed to seed ChromaDB from {SEED_TASKS_CSV}: {exc}")
+        print(f"Failed to seed ChromaDB from {seed_tasks_csv}: {exc}")
 
 
 def get_trello_data():

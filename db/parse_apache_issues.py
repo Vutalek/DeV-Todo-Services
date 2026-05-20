@@ -4,7 +4,10 @@ import pandas as pd
 import os
 
 BASE_DIR = os.path.dirname(__file__)
-OUTPUT_PATH = os.path.join(BASE_DIR, 'chroma_db', 'apache_issues.csv')
+OUTPUT_PATH = os.getenv(
+    'APACHE_ISSUES_CSV_PATH',
+    os.path.join(BASE_DIR, 'chroma_db', 'apache_issues.csv'),
+)
 BASE_URL = 'https://issues.apache.org/jira'
 SEARCH_URL = f'{BASE_URL}/rest/api/2/search'
 

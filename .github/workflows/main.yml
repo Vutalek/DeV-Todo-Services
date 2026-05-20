@@ -63,9 +63,44 @@ jobs:
             # Постоянное хранилище ChromaDB между деплоями
             docker volume create app-chroma-db >/dev/null
 
-            # Останавливаем и удаляем старый контейнер (игнорируем ошибки, если контейнера нет)
+            healthcheck() {
+              PORT="$1"
+              CONTAINER="$2"
+
+              for i in $(seq 1 30); do
+                if curl -fsS "http://localhost:${PORT}/app/v1/heartbeat" >/dev/null; then
+                  echo "Healthcheck passed for ${CONTAINER}"
+                  return 0
+                fi
+
+                if [ "$i" -eq 30 ]; then
+                  echo "Healthcheck failed for ${CONTAINER}"
+                  docker logs "$CONTAINER"
+                  return 1
+                fi
+
+                sleep 2
+              done
+            }
+
+            # Проверяем новый контейнер до остановки текущего app
+            docker rm -f app-new 2>/dev/null || true
+            docker run -d \
+              --name app-new \
+              --env-file .env \
+              -v app-chroma-db:/app/db/chroma_db \
+              -p 8001:8000 \
+              app
+
+            if ! healthcheck 8001 app-new; then
+              docker rm -f app-new 2>/dev/null || true
+              exit 1
+            fi
+
+            # Новый образ проверен, теперь можно переключать production container
             docker stop app 2>/dev/null || true
             docker rm app 2>/dev/null || true
+            docker rm -f app-new 2>/dev/null || true
 
             # Запускаем новый контейнер с .env
             docker run -d \
@@ -76,21 +111,7 @@ jobs:
               --restart unless-stopped \
               app
 
-            # Проверяем, что новый контейнер реально поднялся
-            for i in $(seq 1 30); do
-              if curl -fsS http://localhost:8000/app/v1/heartbeat >/dev/null; then
-                echo "Healthcheck passed"
-                break
-              fi
-
-              if [ "$i" -eq 30 ]; then
-                echo "Healthcheck failed"
-                docker logs app
-                exit 1
-              fi
-
-              sleep 2
-            done
+            healthcheck 8000 app
 
             # Очищаем старые образы
             docker image prune -f

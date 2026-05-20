@@ -38,17 +38,17 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     --mount=type=bind,source=requirements.txt,target=requirements.txt \
     python -m pip install -r requirements.txt
 
-# Create chroma_db directory for RAG database persistence (before switching user)
-RUN mkdir -p /app/db/chroma_db && chown -R appuser:appuser /app/db
+# Create directories for RAG persistence and immutable seed data.
+RUN mkdir -p /app/db/chroma_db /app/seed && chown -R appuser:appuser /app/db /app/seed
 
 # Copy the source code into the container.
 COPY --chown=appuser:appuser . .
 
-# Run Apache issues parser to populate initial data when Jira is reachable.
+# Run Apache issues parser to populate initial seed data when Jira is reachable.
 # The image must still build if Jira is slow/down; the app can start with an
-# empty Chroma collection and seed later when a CSV exists.
-RUN python db/parse_apache_issues.py || echo "Warning: failed to fetch Jira seed data; continuing without seed CSV"
-RUN chown -R appuser:appuser /app/db
+# empty Chroma collection and seed later from a newer image.
+RUN APACHE_ISSUES_CSV_PATH=/app/seed/apache_issues.csv python db/parse_apache_issues.py || echo "Warning: failed to fetch Jira seed data; continuing without seed CSV"
+RUN chown -R appuser:appuser /app/db /app/seed
 
 VOLUME ["/app/db/chroma_db"]
 
