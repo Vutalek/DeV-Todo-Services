@@ -1,5 +1,11 @@
 from db.bm25 import BM25TaskSearch, rrf_fusion
-from db.handler_data import RetrievalTask, task_to_document, task_to_metadata
+from db.handler_data import (
+    RetrievalTask,
+    csv_to_tasks,
+    load_tasks_to_chroma,
+    task_to_document,
+    task_to_metadata,
+)
 from db.embedding import PplxEmbedding
 import asyncio
 import os
@@ -80,6 +86,8 @@ async_client = AsyncOpenAI(
 # Initialize RAG system
 CHROMA_PATH = BASE_DIR / 'db' / 'chroma_db'
 CHROMA_PATH.mkdir(parents=True, exist_ok=True)
+SEED_TASKS_LIMIT = 1000
+SEED_TASKS_CSV = CHROMA_PATH / 'apache_issues.csv'
 
 client_chroma = chromadb.PersistentClient(path=str(CHROMA_PATH))
 
@@ -155,6 +163,25 @@ def load_tasks_from_chroma():
             )
 
         update_bm25_index_locked()
+
+
+def seed_chroma_if_empty():
+    with chroma_lock:
+        current_count = collection.count()
+
+    if current_count > 0 or not SEED_TASKS_CSV.exists():
+        return
+
+    try:
+        seed_tasks = csv_to_tasks(str(SEED_TASKS_CSV))[:SEED_TASKS_LIMIT]
+        if not seed_tasks:
+            return
+
+        with chroma_lock:
+            if collection.count() == 0:
+                load_tasks_to_chroma(collection, seed_tasks)
+    except Exception as exc:
+        print(f"Failed to seed ChromaDB from {SEED_TASKS_CSV}: {exc}")
 
 
 def get_trello_data():
@@ -488,6 +515,7 @@ class SearchRequest(BaseModel):
         default=365, ge=0, description="Максимальное количество дней")
 
 
+seed_chroma_if_empty()
 load_tasks_from_chroma()
 
 
