@@ -1,6 +1,5 @@
 from rank_bm25 import BM25Okapi
 import re
-from .handler_data import RetrievalTask, task_to_document, task_to_metadata
 
 
 class BM25TaskSearch:
@@ -69,19 +68,6 @@ def rrf_fusion(vector_results, bm25_results, k: int = 60, top_n: int = 10):
         }
         for doc_id in ranked_ids
     ]
-
-
-def tasks_to_records(tasks: list[RetrievalTask]):
-    ids = []
-    documents = []
-    metadatas = []
-
-    for i, task in enumerate(tasks):
-        ids.append(f'task_{i}')
-        documents.append(task_to_document(task))
-        metadatas.append(task_to_metadata(task))
-
-    return ids, documents, metadatas
 
 
 def tokenize(text: str) -> list[str]:

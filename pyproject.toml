@@ -18,8 +18,21 @@ dependencies = [
     "uvicorn>=0.43.0",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+]
+
 [tool.uv]
 environments = [
     "sys_platform == 'darwin'",
     "sys_platform == 'linux'",
+]
+
+[tool.pytest.ini_options]
+pythonpath = [
+    ".",
+]
+testpaths = [
+    "tests",
 ]

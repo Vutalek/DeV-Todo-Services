@@ -275,6 +275,10 @@ python3 -m compileall app db mcp common
 ```
 
 ```bash
+uv run pytest -q
+```
+
+```bash
 uv run python -c "from fastapi.testclient import TestClient; import app.app as mod; client = TestClient(mod.app); print(client.get('/app/v1/heartbeat').json(), len(mod.tasks_store), mod.collection.count())"
 ```
 

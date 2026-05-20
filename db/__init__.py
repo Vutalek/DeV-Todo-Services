@@ -2,7 +2,7 @@
 
 from .embedding import PplxEmbedding
 from .handler_data import RetrievalTask, task_to_document, task_to_metadata
-from .bm25 import BM25TaskSearch, tasks_to_records, rrf_fusion
+from .bm25 import BM25TaskSearch, rrf_fusion
 
 __all__ = [
     "PplxEmbedding",
@@ -10,19 +10,5 @@ __all__ = [
     "task_to_document",
     "task_to_metadata",
     "BM25TaskSearch",
-    "tasks_to_records",
     "rrf_fusion",
-    "client_chroma",
-    "collection",
-    "ef",
-    "CHROMA_PATH",
 ]
-
-
-def __getattr__(name: str):
-    if name in {"client_chroma", "collection", "ef", "CHROMA_PATH"}:
-        from . import retrieval
-
-        return getattr(retrieval, name)
-
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

@@ -1,5 +1,4 @@
 from pydantic import BaseModel, ValidationError
-from typing import Literal
 from datetime import datetime
 import pandas as pd
 from common.deadline import calculate_working_hours_between
