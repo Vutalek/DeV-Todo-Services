@@ -7,4 +7,6 @@ insert into permissions (role, permission)
 values
 ('PROJECT_CREATOR', 'delete'),
 ('PROJECT_CREATOR', 'edit'),
-('PROJECT_MEMBER', 'edit');
+('PROJECT_CREATOR', 'invite'),
+('PROJECT_MEMBER', 'edit'),
+('PROJECT_MEMBER', 'invite');
