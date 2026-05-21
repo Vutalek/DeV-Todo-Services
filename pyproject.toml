@@ -3,11 +3,36 @@ name = "todo"
 version = "0.1.0"
 description = "TODO dev"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.14"
 dependencies = [
+    "chromadb>=1.5.8",
     "dotenv>=0.9.9",
     "fastapi>=0.135.2",
+    "numpy>=1.24.0",
     "openai>=2.24.0",
+    "orjson>=3.11.8",
+    "pandas>=3.0.2",
+    "rank-bm25>=0.2.2",
     "requests>=2.33.1",
+    "trello>=0.9.7.3,<0.10",
     "uvicorn>=0.43.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+]
+
+[tool.uv]
+environments = [
+    "sys_platform == 'darwin'",
+    "sys_platform == 'linux'",
+]
+
+[tool.pytest.ini_options]
+pythonpath = [
+    ".",
+]
+testpaths = [
+    "tests",
 ]

@@ -135,7 +135,7 @@ celerybeat.pid
 *.sage.py
 
 # Environments
-.env
+*.env
 .envrc
 .venv
 env/
@@ -208,3 +208,6 @@ __marimo__/
 
 # custom
 test.py
+benchmark/data/examples.jsonl
+benchmark/res/results.jsonl
+db/chroma_db/
