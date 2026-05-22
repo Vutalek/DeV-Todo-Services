@@ -358,18 +358,21 @@ def format_similar_tasks_context(similar_tasks: list[dict]) -> str:
     if not similar_tasks:
         return ""
 
+    fields = (
+        "name",
+        "desc",
+        "priority",
+        "label",
+        "reranker_score",
+        "business_days",
+        "time_hours",
+    )
     task_blocks = []
     for index, task in enumerate(similar_tasks, start=1):
-        lines = [f"{index}. {task.get('name') or 'Без названия'}"]
-
-        if task.get("desc"):
-            lines.append(f"   Описание: {task['desc']}")
-        if task.get("label"):
-            lines.append(f"   Метка: {task['label']}")
-        if task.get("priority"):
-            lines.append(f"   Приоритет: {task['priority']}")
-        if task.get("time_hours"):
-            lines.append(f"   Фактическое время: {task['time_hours']} ч")
+        lines = [f"{index}. Похожая задача"]
+        for field in fields:
+            value = task.get(field)
+            lines.append(f"   {field}: {'' if value is None else value}")
 
         task_blocks.append("\n".join(lines))
 
@@ -707,7 +710,7 @@ async def sendtask(message: Message):
     return {"status": "success", "result": result}
 
 
-@app.post("/app/v1/tasks")
+@app.post("/app/v1/add_task")
 def add_or_update_task(task_req: TaskRequest):
     """
     Добавить или обновить задачу в БД RAG-поиска.

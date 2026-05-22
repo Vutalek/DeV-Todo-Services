@@ -221,15 +221,22 @@ def test_build_message_text_with_similar_tasks_adds_context():
                 "desc": "Token refresh bug",
                 "label": "Bug",
                 "priority": "High",
+                "reranker_score": 0.91,
+                "business_days": 0.5,
                 "time_hours": 4,
             }
         ],
     )
 
-    assert "Новая тудушка:\nПочинить авторизацию" in message_text
+    assert "Новая задача:\nПочинить авторизацию" in message_text
     assert "Самые похожие задачи из истории:" in message_text
-    assert "Fix login" in message_text
-    assert "Фактическое время: 4 ч" in message_text
+    assert "name: Fix login" in message_text
+    assert "desc: Token refresh bug" in message_text
+    assert "priority: High" in message_text
+    assert "label: Bug" in message_text
+    assert "reranker_score: 0.91" in message_text
+    assert "business_days: 0.5" in message_text
+    assert "time_hours: 4" in message_text
 
 
 def test_send_enriches_message_with_similar_tasks(monkeypatch):
@@ -251,6 +258,8 @@ def test_send_enriches_message_with_similar_tasks(monkeypatch):
                 "desc": "Token refresh bug",
                 "label": "Bug",
                 "priority": "High",
+                "reranker_score": 0.91,
+                "business_days": 0.5,
                 "time_hours": 4,
             }
         ],

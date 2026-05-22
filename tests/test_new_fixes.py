@@ -51,7 +51,7 @@ def test_add_or_update_task_rollback_on_failure(monkeypatch):
     }
 
     # 3. Вызываем API и убеждаемся, что возвращается код 502
-    response = client.post("/app/v1/tasks", json=task_payload)
+    response = client.post("/app/v1/add_task", json=task_payload)
     assert response.status_code == 502
     assert "Rebuilding BM25 failed intentionally" in response.json()["message"]
 
