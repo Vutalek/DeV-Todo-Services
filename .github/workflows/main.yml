@@ -39,7 +39,6 @@ jobs:
             TRELLO_TOKEN="${{ secrets.TRELLO_TOKEN }}"
             TRELLO_BOARD_ID="${{ secrets.TRELLO_BOARD_ID }}"
             ROUTER_API_KEY="${{ secrets.ROUTER_API_KEY }}"
-            TRELLO_LIST_ID="${{ secrets.TRELLO_LIST_ID }}"
 
             # Создаём директорию приложения, если её нет
             mkdir -p $APP_DIR
@@ -51,7 +50,6 @@ jobs:
             TRELLO_TOKEN=$TRELLO_TOKEN
             TRELLO_BOARD_ID=$TRELLO_BOARD_ID
             ROUTER_API_KEY=$ROUTER_API_KEY
-            TRELLO_LIST_ID=$TRELLO_LIST_ID
             EOF
 
             # Ограничиваем права доступа

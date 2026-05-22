@@ -1,31 +1,59 @@
 # DeV-Todo-Services
 
-Сервис превращает TODO/описание задачи в структурированную Trello-задачу и использует RAG-поиск по историческим задачам для подбора похожего контекста.
+FastAPI-сервис для превращения свободного TODO-текста в структурированную Trello-задачу. Перед генерацией сервис ищет похожие исторические задачи в RAG-базе, добавляет их в контекст модели и на этой основе помогает выбрать `label`, `prio`, `time`, `roadmap` и колонку Trello.
 
-## Основные сервисы
+## Что внутри
 
-- `app/app.py` - основной FastAPI-сервис.
+- `app/app.py` - основной FastAPI API.
+- `prompt/prompt.txt` - системный prompt для генерации Trello-задачи.
+- `db/handler_data.py` - модель исторической задачи и расчет рабочих часов.
+- `db/bm25.py` - lexical search и RRF fusion.
+- `db/embedding.py` - OpenRouter embedding function для ChromaDB.
 - `db/chroma_db` - persistent ChromaDB storage.
+- `common/deadline.py` - расчет дедлайна по рабочему календарю.
+- `benchmark/` - отдельный runner для сравнения LLM-моделей через OpenRouter.
+- `tests/` - unit/API тесты.
+
+## Pipeline
+
+1. Исторические задачи добавляются в RAG-БД через `/app/v1/add_task`.
+2. При старте приложение поднимает Chroma collection `TODO` и восстанавливает BM25 index из Chroma.
+3. `/app/v1/search` ищет похожие задачи:
+   - BM25 lexical search;
+   - Chroma vector search;
+   - RRF fusion;
+   - OpenRouter reranker `cohere/rerank-4-fast`;
+   - фильтр `reranker_score > 0.5`, если reranker доступен.
+4. `/app/v1/send` автоматически вызывает этот же поиск по `Message.text`, добавляет найденные задачи в user-context и отправляет обогащенный текст в OpenRouter chat completion.
+5. Ответ модели валидируется динамической Pydantic-моделью, построенной из актуальных Trello колонок и labels.
+6. `deadline` считается сервером из `time` по рабочему календарю: будни, 10:00-18:00, timezone `Europe/Moscow`.
 
 ## Переменные окружения
+
+Создай `.env` по примеру `.env.example`:
 
 ```env
 ROUTER_API_KEY=...
 TRELLO_API_KEY=...
 TRELLO_TOKEN=...
 TRELLO_BOARD_ID=...
-TRELLO_LIST_ID=...
 ```
 
-- `ROUTER_API_KEY` используется для OpenRouter chat completions, embeddings и reranker.
-- `TRELLO_API_KEY`, `TRELLO_TOKEN`, `TRELLO_BOARD_ID` нужны `/app/v1/send`, чтобы получить списки и labels Trello.
+- `ROUTER_API_KEY` нужен для OpenRouter chat completions, embeddings и reranker.
+- `TRELLO_API_KEY`, `TRELLO_TOKEN`, `TRELLO_BOARD_ID` нужны `/app/v1/send`, чтобы получить актуальные списки и labels с доски.
+- `TRELLO_LIST_ID` может встречаться в CI secrets как legacy-переменная, но текущий код использует список колонок доски, а не фиксированный list id.
 
-## App API
+## Локальный запуск
 
-### Heartbeat
+```bash
+uv sync
+uv run uvicorn app.app:app --host 0.0.0.0 --port 8000 --reload
+```
 
-```http
-GET /app/v1/heartbeat
+Проверка:
+
+```bash
+curl http://localhost:8000/app/v1/heartbeat
 ```
 
 Ответ:
@@ -36,24 +64,117 @@ GET /app/v1/heartbeat
 }
 ```
 
-Важно: `heartbeat` проверяет только то, что приложение запущено. Он не проверяет готовность Chroma, BM25, Trello или OpenRouter.
+`heartbeat` проверяет только то, что приложение запущено. Он не проверяет готовность Chroma, BM25, Trello или OpenRouter.
 
-### Генерация задачи
+## API
 
-```http
-POST /app/v1/send
-Content-Type: application/json
+### GET `/app/v1/heartbeat`
+
+Healthcheck приложения.
+
+```json
+{
+  "status": "alive"
+}
 ```
 
-Тело:
+### POST `/app/v1/add_task`
+
+Добавляет историческую задачу в ChromaDB и обновляет in-memory BM25 index.
+
+```json
+{
+  "name": "Вынести отправку webhook в отдельный клиент",
+  "desc": "Сетевой вызов нужно отделить от бизнес-логики",
+  "prio": "High",
+  "label": "Bug",
+  "created_at": "2024-05-05T10:30:00+03:00",
+  "finished_at": "2024-05-05T12:30:00+03:00"
+}
+```
+
+Успешный ответ:
+
+```json
+{
+  "status": "success",
+  "message": "Task 'Вынести отправку webhook в отдельный клиент' added successfully",
+  "task_id": "task_..."
+}
+```
+
+При записи рассчитываются:
+
+- `business_days` - рабочая длительность в днях;
+- `lead_time_hours` - рабочая длительность в часах.
+
+Ночи и выходные не считаются рабочим временем.
+
+### POST `/app/v1/search`
+
+Ищет похожие задачи в RAG-БД.
+
+```json
+{
+  "query": "отправка webhook",
+  "n_results": 10,
+  "min_days": 0,
+  "max_days": 365
+}
+```
+
+Успешный ответ:
+
+```json
+{
+  "status": "success",
+  "query": "отправка webhook",
+  "results_count": 1,
+  "results": [
+    {
+      "name": "Вынести отправку webhook в отдельный клиент",
+      "desc": "Сетевой вызов нужно отделить от бизнес-логики",
+      "priority": "High",
+      "label": "Bug",
+      "reranker_score": 0.87,
+      "business_days": 0.25,
+      "time_hours": 2
+    }
+  ]
+}
+```
+
+Если reranker недоступен, `/search` не падает: возвращает top 5 из hybrid search, добавляет `warning`, а `reranker_score` будет `null`.
+
+Если база пустая:
+
+```json
+{
+  "status": "warning",
+  "message": "No tasks in database",
+  "results": []
+}
+```
+
+### POST `/app/v1/send`
+
+Генерирует структурированную задачу из свободного текста. Похожий контекст вручную передавать не нужно: endpoint сам делает поиск по `text` и добавляет в prompt похожие задачи со всеми полями:
+
+- `name`
+- `desc`
+- `priority`
+- `label`
+- `reranker_score`
+- `business_days`
+- `time_hours`
+
+Запрос:
 
 ```json
 {
   "text": "TODO: вынести отправку webhook в отдельный клиент"
 }
 ```
-
-`message.text` может содержать результат `/app/v1/search` со списком похожих задач. Модель использует похожие задачи как контекст для выбора `label`, `prio`, `time` и формулировки новой задачи.
 
 Успешный ответ:
 
@@ -73,11 +194,28 @@ Content-Type: application/json
 }
 ```
 
-- `time` - количество рабочих часов до дедлайна.
-- `deadline` вычисляется сервером по рабочему календарю: будни, 10:00-18:00, timezone `Europe/Moscow`.
-- При ошибке OpenRouter ручка возвращает HTTP `502` с JSON `{"status": "error", "message": "..."}`.
+При ошибке Trello/OpenRouter endpoint возвращает HTTP `502` с JSON:
 
-Проверка:
+```json
+{
+  "status": "error",
+  "message": "..."
+}
+```
+
+## Примеры curl
+
+```bash
+curl -X POST "http://localhost:8000/app/v1/add_task" \
+  -H "Content-Type: application/json" \
+  -d @app/check_task.json
+```
+
+```bash
+curl -X POST "http://localhost:8000/app/v1/search" \
+  -H "Content-Type: application/json" \
+  -d @app/check_search.json
+```
 
 ```bash
 curl -X POST "http://localhost:8000/app/v1/send" \
@@ -85,155 +223,88 @@ curl -X POST "http://localhost:8000/app/v1/send" \
   -d @app/check.json
 ```
 
-### Добавление задачи в RAG-БД
-
-```http
-POST /app/v1/tasks
-Content-Type: application/json
-```
-
-Тело:
-
-```json
-{
-  "name": "Вынести отправку webhook в отдельный клиент",
-  "desc": "Сетевой вызов нужно отделить от бизнес-логики",
-  "prio": "High",
-  "label": "Bug",
-  "created_at": "2024-05-05T10:30:00.000000+00:00",
-  "finished_at": "2024-05-05T12:30:00.000000+00:00"
-}
-```
-
-Поля:
-
-- `name` - название задачи.
-- `desc` - описание задачи.
-- `prio` - исторический приоритет задачи.
-- `label` - исторический тип/label задачи.
-- `created_at` - дата создания в ISO format.
-- `finished_at` - дата завершения в ISO format.
-
-Успешный ответ:
-
-```json
-{
-  "status": "success",
-  "message": "Task 'Вынести отправку webhook в отдельный клиент' added successfully",
-  "task_id": "task_..."
-}
-```
-
-При записи считается metadata:
-
-- `business_days` - рабочая длительность в днях.
-- `lead_time_hours` - рабочая длительность в часах.
-
-Ночи и выходные не считаются рабочим временем.
-
-### Поиск похожих задач
-
-```http
-POST /app/v1/search
-Content-Type: application/json
-```
-
-Тело:
-
-```json
-{
-  "query": "отправка webhook",
-  "n_results": 10,
-  "min_days": 0,
-  "max_days": 365
-}
-```
-
-Pipeline:
-
-1. BM25 lexical search.
-2. Chroma vector search через OpenRouter embeddings.
-3. RRF fusion.
-4. OpenRouter reranker `cohere/rerank-4-fast`.
-5. Возврат top 5 задач.
-
-Успешный ответ:
-
-```json
-{
-  "status": "success",
-  "query": "отправка webhook",
-  "results_count": 5,
-  "results": [
-    {
-      "name": "Вынести отправку webhook в отдельный клиент",
-      "desc": "Сетевой вызов нужно отделить от бизнес-логики",
-      "priority": "High",
-      "label": "Bug",
-      "reranker_score": 0.87,
-      "business_days": 0.5,
-      "time_hours": 4
-    }
-  ]
-}
-```
-
-Если reranker недоступен, `/search` не падает: возвращает top 5 из hybrid search, добавляет `warning`, а `reranker_score` будет `null`.
-
-Если база пустая:
-
-```json
-{
-  "status": "warning",
-  "message": "No tasks in database",
-  "results": []
-}
-```
-
-## RAG Chroma volume
-
-При старте приложение открывает Chroma collection `TODO`.
-
-В Docker deploy используется named volume:
+## Тесты и проверки
 
 ```bash
-app-chroma-db:/app/db/chroma_db
-```
-
-Volume хранит ChromaDB между деплоями.
-
-## Docker deploy
-
-Workflow `.github/workflows/main.yml`:
-
-1. Собирает image `app`.
-2. Создаёт persistent volume `app-chroma-db`.
-3. Запускает `app-new` на временном порту `8001`.
-4. Проверяет `GET /app/v1/heartbeat`.
-5. Только после успешного healthcheck останавливает старый `app`.
-6. Запускает новый `app` на порту `8000`.
-7. Повторно проверяет healthcheck.
-
-Это защищает от ситуации, когда новый image не стартует, а старый контейнер уже остановлен.
-
-## Быстрые проверки
-
-```bash
-python3 -m compileall app db common
+uv run pytest
 ```
 
 ```bash
-uv run pytest -q
+python3 -m compileall app db common benchmark
 ```
+
+Быстрая проверка FastAPI без внешнего HTTP-сервера:
 
 ```bash
 uv run python -c "from fastapi.testclient import TestClient; import app.app as mod; client = TestClient(mod.app); print(client.get('/app/v1/heartbeat').json(), len(mod.tasks_store), mod.collection.count())"
 ```
 
+## Docker
+
+Локальная сборка:
+
+```bash
+docker build -t app .
+```
+
+Запуск:
+
+```bash
+docker volume create app-chroma-db
+docker run -d \
+  --name app \
+  --env-file .env \
+  -v app-chroma-db:/app/db/chroma_db \
+  -p 8000:8000 \
+  app
+```
+
+Dockerfile запускает:
+
+```bash
+uvicorn app.app:app --host 0.0.0.0 --port 8000 --workers 1
+```
+
+Один worker важен, потому что BM25 index живет в памяти процесса.
+
+## Deploy
+
+Workflow `.github/workflows/main.yml` запускается на push в `main` и вручную через `workflow_dispatch`.
+
+Что делает deploy:
+
+1. Копирует код на сервер через SSH.
+2. Создает `.env` из GitHub Secrets.
+3. Собирает Docker image `app`.
+4. Создает persistent volume `app-chroma-db`.
+5. Запускает временный контейнер `app-new` на порту `8001`.
+6. Проверяет `GET /app/v1/heartbeat`.
+7. После успешного healthcheck заменяет production container `app` на порту `8000`.
+8. Повторно проверяет healthcheck и чистит старые образы.
+
+Volume `app-chroma-db:/app/db/chroma_db` хранит ChromaDB между деплоями.
+
+## Benchmark
+
+`benchmark/` позволяет прогонять примеры из JSONL через несколько candidate-моделей и оценивать ответы judge-моделями.
+
+```bash
+uv run python benchmark/main.py \
+  --input benchmark/data/examples.jsonl \
+  --output-dir benchmark/res
+```
+
+Результаты пишутся в:
+
+- `benchmark/res/results.jsonl`
+- `benchmark/res/summary.json`
+
+Модели и prompts по умолчанию лежат в `benchmark/config.py` и `benchmark/prompts/`.
+
 ## Требования
 
-- Python 3.11+
+- Python `>=3.11,<3.14`
 - FastAPI
 - ChromaDB
 - OpenRouter API key
-- Trello API key/token
+- Trello API key/token/board id
