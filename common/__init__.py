@@ -1,1 +1,2 @@
-"""Shared helpers used by app and MCP services."""
+"""Общие вспомогательные функции для приложения."""
+

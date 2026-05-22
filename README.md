@@ -5,9 +5,7 @@
 ## Основные сервисы
 
 - `app/app.py` - основной FastAPI-сервис.
-- `mcp/mcp.py` - отдельная ручка для создания карточки в Trello.
 - `db/chroma_db` - persistent ChromaDB storage.
-- `seed/apache_issues.csv` - seed CSV внутри Docker image, если он был собран из Jira.
 
 ## Переменные окружения
 
@@ -21,7 +19,6 @@ TRELLO_LIST_ID=...
 
 - `ROUTER_API_KEY` используется для OpenRouter chat completions, embeddings и reranker.
 - `TRELLO_API_KEY`, `TRELLO_TOKEN`, `TRELLO_BOARD_ID` нужны `/app/v1/send`, чтобы получить списки и labels Trello.
-- `TRELLO_LIST_ID` нужен MCP-сервису `/mcp/v1/sendtask` для создания карточки.
 
 ## App API
 
@@ -193,16 +190,9 @@ Pipeline:
 }
 ```
 
-## RAG seed и Chroma volume
+## RAG Chroma volume
 
 При старте приложение открывает Chroma collection `TODO`.
-
-Если collection пустая, сервис пытается загрузить seed CSV:
-
-1. Сначала `seed/apache_issues.csv` внутри Docker image.
-2. Если его нет, fallback: `db/chroma_db/apache_issues.csv`.
-
-Если CSV найден и содержит валидные задачи, в Chroma загружается до `1000` задач, затем строится in-memory BM25 index.
 
 В Docker deploy используется named volume:
 
@@ -210,7 +200,7 @@ Pipeline:
 app-chroma-db:/app/db/chroma_db
 ```
 
-Volume хранит ChromaDB между деплоями. Seed CSV хранится отдельно в `/app/seed`, чтобы пустой volume не скрывал seed-файл из image.
+Volume хранит ChromaDB между деплоями.
 
 ## Docker deploy
 
@@ -226,52 +216,10 @@ Workflow `.github/workflows/main.yml`:
 
 Это защищает от ситуации, когда новый image не стартует, а старый контейнер уже остановлен.
 
-## MCP API
-
-### Создание Trello-карточки
-
-```http
-POST /mcp/v1/sendtask
-Content-Type: application/json
-```
-
-Тело:
-
-```json
-{
-  "name": "Вынести отправку webhook",
-  "desc": "Нужно отделить сетевой вызов от бизнес-логики",
-  "prio": 3,
-  "time": 4
-}
-```
-
-- `time` - рабочие часы до дедлайна.
-- MCP сам вычисляет `due` через общий рабочий календарь.
-- Требуются `TRELLO_API_KEY`, `TRELLO_TOKEN`, `TRELLO_LIST_ID`.
-
-Успешный ответ:
-
-```json
-{
-  "status": "success",
-  "result": {}
-}
-```
-
-При ошибке Trello или отсутствии env MCP возвращает HTTP `502`:
-
-```json
-{
-  "status": "error",
-  "message": "Trello card creation failed: ..."
-}
-```
-
 ## Быстрые проверки
 
 ```bash
-python3 -m compileall app db mcp common
+python3 -m compileall app db common
 ```
 
 ```bash
