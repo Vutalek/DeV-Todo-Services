@@ -31,6 +31,8 @@ BASE_DIR = APP_DIR.parent
 sys.path.insert(0, str(BASE_DIR))
 
 
+from contextlib import asynccontextmanager
+
 load_dotenv()
 
 TRELLO_KEY = os.getenv("TRELLO_API_KEY")
@@ -39,7 +41,13 @@ BOARD_ID = os.getenv("TRELLO_BOARD_ID")
 ROUTER_API_KEY = os.getenv("ROUTER_API_KEY")
 
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    load_tasks_from_chroma()
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
 
 origins = [
     "http://localhost",
@@ -201,32 +209,6 @@ def load_tasks_from_chroma():
                 )
         except Exception as exc:
             print(f"Failed to update ChromaDB metadata: {exc}")
-
-
-def seed_chroma_if_empty():
-    with chroma_lock:
-        current_count = collection.count()
-
-    seed_tasks_csv = (
-        IMAGE_SEED_TASKS_CSV
-        if IMAGE_SEED_TASKS_CSV.exists()
-        else LEGACY_SEED_TASKS_CSV
-    )
-
-    if current_count > 0 or not seed_tasks_csv.exists():
-        return
-
-    try:
-        seed_tasks = csv_to_tasks(str(seed_tasks_csv))[:SEED_TASKS_LIMIT]
-        if not seed_tasks:
-            return
-
-        with chroma_lock:
-            if collection.count() == 0:
-                load_tasks_to_chroma(collection, seed_tasks)
-    except Exception as exc:
-        print(f"Failed to seed ChromaDB from {seed_tasks_csv}: {exc}")
-
 
 def get_trello_data():
     now = time.monotonic()
@@ -501,9 +483,6 @@ class SearchRequest(BaseModel):
     max_days: int = Field(
         default=365, ge=0, description="Максимальное количество дней")
 
-
-seed_chroma_if_empty()
-load_tasks_from_chroma()
 
 
 @app.get("/app/v1/heartbeat")
