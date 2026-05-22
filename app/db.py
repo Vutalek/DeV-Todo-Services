@@ -16,7 +16,7 @@ class DBFacade:
         self.__db = os.environ.get("POSTGRES_DB", "")
         self.__user = os.environ.get("POSTGRES_USER", "")
         self.__password = os.environ.get("POSTGRES_PASSWORD", "")
-        self.engine = sa.create_engine(f"postgresql+asynpg://{self.__user}:{self.__password}@{self.__host}/{self.__db}")
+        self.engine = sa.create_engine(f"postgresql+psycopg2://{self.__user}:{self.__password}@{self.__host}/{self.__db}")
         self.hasher = PasswordHash.recommended()
     
     ### USER LOGIC
