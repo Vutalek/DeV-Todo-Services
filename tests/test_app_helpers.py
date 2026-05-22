@@ -1,4 +1,7 @@
+from types import SimpleNamespace
+
 import requests
+from fastapi.testclient import TestClient
 
 import app.app as mod
 
@@ -207,3 +210,89 @@ def test_create_dynamic_task_model_validates_literals():
     )
 
     assert parsed.column == "Backlog"
+
+
+def test_build_message_text_with_similar_tasks_adds_context():
+    message_text = mod.build_message_text_with_similar_tasks(
+        "Починить авторизацию",
+        [
+            {
+                "name": "Fix login",
+                "desc": "Token refresh bug",
+                "label": "Bug",
+                "priority": "High",
+                "time_hours": 4,
+            }
+        ],
+    )
+
+    assert "Новая тудушка:\nПочинить авторизацию" in message_text
+    assert "Самые похожие задачи из истории:" in message_text
+    assert "Fix login" in message_text
+    assert "Фактическое время: 4 ч" in message_text
+
+
+def test_send_enriches_message_with_similar_tasks(monkeypatch):
+    client = TestClient(mod.app)
+    captured = {}
+
+    monkeypatch.setattr(mod, "ROUTER_API_KEY", "key")
+    monkeypatch.setattr(
+        mod,
+        "get_trello_data",
+        lambda: ({"Backlog": "list_1"}, {"Bug": "label_1"}),
+    )
+    monkeypatch.setattr(
+        mod,
+        "get_similar_tasks_for_message",
+        lambda text: [
+            {
+                "name": "Fix login",
+                "desc": "Token refresh bug",
+                "label": "Bug",
+                "priority": "High",
+                "time_hours": 4,
+            }
+        ],
+    )
+
+    class ParsedTask:
+        time = 3
+
+        def model_dump(self):
+            return {
+                "name": "Починить авторизацию",
+                "desc": "Ошибка refresh token",
+                "label": ["Bug"],
+                "prio": 4,
+                "time": self.time,
+                "roadmap": "Проверить refresh flow",
+                "column": "Backlog",
+            }
+
+    class FakeCompletions:
+        async def parse(self, **kwargs):
+            captured["user_content"] = kwargs["messages"][1]["content"]
+            return SimpleNamespace(
+                choices=[
+                    SimpleNamespace(
+                        message=SimpleNamespace(parsed=ParsedTask())
+                    )
+                ]
+            )
+
+    monkeypatch.setattr(
+        mod,
+        "async_client",
+        SimpleNamespace(chat=SimpleNamespace(completions=FakeCompletions())),
+    )
+
+    response = client.post(
+        "/app/v1/send",
+        json={"text": "Починить авторизацию"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+    assert "Починить авторизацию" in captured["user_content"]
+    assert "Fix login" in captured["user_content"]

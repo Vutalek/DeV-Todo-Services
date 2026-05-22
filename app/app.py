@@ -65,6 +65,7 @@ RERANK_MODEL = "cohere/rerank-4-fast"
 RERANK_URL = "https://openrouter.ai/api/v1/rerank"
 RERANK_TOP_N = 5
 BUSINESS_DAY_HOURS = 8
+SIMILAR_TASKS_CONTEXT_TOP_N = 5
 
 prompt_path = os.path.join(BASE_DIR, 'prompt', 'prompt.txt')
 
@@ -349,6 +350,51 @@ def task_payload_to_search_result(
     }
 
 
+def format_similar_tasks_context(similar_tasks: list[dict]) -> str:
+    if not similar_tasks:
+        return ""
+
+    task_blocks = []
+    for index, task in enumerate(similar_tasks, start=1):
+        lines = [f"{index}. {task.get('name') or 'Без названия'}"]
+
+        if task.get("desc"):
+            lines.append(f"   Описание: {task['desc']}")
+        if task.get("label"):
+            lines.append(f"   Метка: {task['label']}")
+        if task.get("priority"):
+            lines.append(f"   Приоритет: {task['priority']}")
+        if task.get("time_hours"):
+            lines.append(f"   Фактическое время: {task['time_hours']} ч")
+
+        task_blocks.append("\n".join(lines))
+
+    return "\n\n".join(task_blocks)
+
+
+def build_message_text_with_similar_tasks(
+    original_text: str,
+    similar_tasks: list[dict],
+) -> str:
+    similar_tasks_context = format_similar_tasks_context(similar_tasks)
+    if not similar_tasks_context:
+        return original_text
+
+    return "\n".join([
+        "Новая тудушка:",
+        original_text.strip(),
+        "",
+        "Самые похожие задачи из истории:",
+        similar_tasks_context,
+        "",
+        (
+            "Используй похожие задачи как контекст для оценки меток, "
+            "приоритета, сроков и roadmap. Новую задачу сформируй только "
+            "по новой тудушке."
+        ),
+    ])
+
+
 def rerank_tasks(
     query: str,
     tasks: list[dict],
@@ -479,6 +525,112 @@ class SearchRequest(BaseModel):
         default=365, ge=0, description="Максимальное количество дней")
 
 
+def find_relevant_tasks(search_req: SearchRequest) -> dict:
+    """
+    Поиск задач в БД с использованием гибридного поиска (BM25 + Vector).
+    """
+    with state_lock:
+        if not tasks_store or bm25_index is None:
+            return {
+                "status": "warning",
+                "message": "No tasks in database",
+                "results": []
+            }
+
+        # Подготовить query
+        query_text = search_req.query
+        bm25_snapshot = bm25_index
+
+    # Выполнить BM25 поиск
+    candidate_count = max(search_req.n_results, RERANK_TOP_N)
+    where_days = (search_req.min_days, search_req.max_days)
+    bm25_results = bm25_snapshot.search(
+        query_text,
+        n_results=candidate_count,
+        where_days=where_days,
+    )
+
+    # Выполнить vector поиск через ChromaDB
+    try:
+        with chroma_lock:
+            vector_results = collection.query(
+                query_texts=[query_text],
+                n_results=candidate_count,
+                include=['distances'],
+                where={
+                    '$and': [
+                        {'business_days': {'$gte': search_req.min_days}},
+                        {'business_days': {'$lte': search_req.max_days}},
+                    ]
+                }
+            )
+    except Exception as e:
+        print(f"Vector search error: {e}")
+        vector_results = {'ids': [[]]}
+
+    # Гибридный поиск (RRF fusion)
+    hybrid_results = rrf_fusion(
+        vector_results, bm25_results, k=60, top_n=candidate_count)
+
+    candidate_ids = []
+    seen_task_ids = set()
+
+    for result in hybrid_results:
+        task_id = result['id']
+        if task_id in seen_task_ids:
+            continue
+        seen_task_ids.add(task_id)
+        candidate_ids.append(task_id)
+
+    candidate_tasks = get_chroma_tasks_by_ids(candidate_ids)
+    reranked_results, warning = rerank_tasks(
+        query_text,
+        candidate_tasks,
+        top_n=RERANK_TOP_N,
+    )
+
+    if warning is not None:
+        search_results = [
+            task_payload_to_search_result(task)
+            for task in candidate_tasks[:RERANK_TOP_N]
+        ]
+    else:
+        # Фильтруем задачи из RAG по relevance_score: если он выше 0.5, то задачу оставляем
+        search_results = [
+            task for task in reranked_results
+            if task.get("reranker_score") is not None and task["reranker_score"] > 0.5
+        ]
+
+    response = {
+        "status": "success",
+        "query": query_text,
+        "results_count": len(search_results),
+        "results": search_results
+    }
+
+    if warning is not None:
+        response["warning"] = warning
+
+    return response
+
+
+def get_similar_tasks_for_message(message_text: str) -> list[dict]:
+    try:
+        search_response = find_relevant_tasks(
+            SearchRequest(
+                query=message_text,
+                n_results=SIMILAR_TASKS_CONTEXT_TOP_N,
+            )
+        )
+    except Exception as exc:
+        print(f"Similar tasks search failed: {exc}")
+        return []
+
+    if search_response.get("status") != "success":
+        return []
+
+    return search_response.get("results", [])[:SIMILAR_TASKS_CONTEXT_TOP_N]
+
 
 @app.get("/app/v1/heartbeat")
 def heartbeat():
@@ -498,6 +650,15 @@ async def sendtask(message: Message):
                 ),
             },
         )
+
+    similar_tasks = await asyncio.to_thread(
+        get_similar_tasks_for_message,
+        message.text,
+    )
+    message_text = build_message_text_with_similar_tasks(
+        message.text,
+        similar_tasks,
+    )
 
     col_map, lab_map = await asyncio.to_thread(get_trello_data)
 
@@ -519,7 +680,7 @@ async def sendtask(message: Message):
                     )
                 },
                 {
-                    "role": "user", "content": message.text
+                    "role": "user", "content": message_text
                 },
             ],
             temperature=0.1,
@@ -614,93 +775,8 @@ def add_or_update_task(task_req: TaskRequest):
 
 @app.post("/app/v1/search")
 def search_tasks(search_req: SearchRequest):
-    """
-    Поиск задач в БД с использованием гибридного поиска (BM25 + Vector).
-    """
     try:
-        with state_lock:
-            if not tasks_store or bm25_index is None:
-                return {
-                    "status": "warning",
-                    "message": "No tasks in database",
-                    "results": []
-                }
-
-            # Подготовить query
-            query_text = search_req.query
-            bm25_snapshot = bm25_index
-
-        # Выполнить BM25 поиск
-        candidate_count = max(search_req.n_results, RERANK_TOP_N)
-        where_days = (search_req.min_days, search_req.max_days)
-        bm25_results = bm25_snapshot.search(
-            query_text,
-            n_results=candidate_count,
-            where_days=where_days,
-        )
-
-        # Выполнить vector поиск через ChromaDB
-        try:
-            with chroma_lock:
-                vector_results = collection.query(
-                    query_texts=[query_text],
-                    n_results=candidate_count,
-                    include=['distances'],
-                    where={
-                        '$and': [
-                            {'business_days': {'$gte': search_req.min_days}},
-                            {'business_days': {'$lte': search_req.max_days}},
-                        ]
-                    }
-                )
-        except Exception as e:
-            print(f"Vector search error: {e}")
-            vector_results = {'ids': [[]]}
-
-        # Гибридный поиск (RRF fusion)
-        hybrid_results = rrf_fusion(
-            vector_results, bm25_results, k=60, top_n=candidate_count)
-
-        candidate_ids = []
-        seen_task_ids = set()
-
-        for result in hybrid_results:
-            task_id = result['id']
-            if task_id in seen_task_ids:
-                continue
-            seen_task_ids.add(task_id)
-            candidate_ids.append(task_id)
-
-        candidate_tasks = get_chroma_tasks_by_ids(candidate_ids)
-        reranked_results, warning = rerank_tasks(
-            query_text,
-            candidate_tasks,
-            top_n=RERANK_TOP_N,
-        )
-
-        if warning is not None:
-            search_results = [
-                task_payload_to_search_result(task)
-                for task in candidate_tasks[:RERANK_TOP_N]
-            ]
-        else:
-            # Фильтруем задачи из RAG по relevance_score: если он выше 0.5, то задачу оставляем
-            search_results = [
-                task for task in reranked_results
-                if task.get("reranker_score") is not None and task["reranker_score"] > 0.5
-            ]
-
-        response = {
-            "status": "success",
-            "query": query_text,
-            "results_count": len(search_results),
-            "results": search_results
-        }
-
-        if warning is not None:
-            response["warning"] = warning
-
-        return response
+        return find_relevant_tasks(search_req)
 
     except Exception as e:
         return {
