@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from db.bm25 import BM25TaskSearch, rrf_fusion
 from db.handler_data import (
     RetrievalTask,
@@ -28,8 +29,6 @@ APP_DIR = Path(__file__).parent.resolve()
 BASE_DIR = APP_DIR.parent
 sys.path.insert(0, str(BASE_DIR))
 
-
-from contextlib import asynccontextmanager
 
 load_dotenv()
 
@@ -145,10 +144,14 @@ def normalize_chroma_metadata(metadata: dict | None, document: str | None) -> di
 
     try:
         task = RetrievalTask(
-            name=metadata.get("name") or get_document_field(document, "Название"),
-            desc=metadata.get("desc") or get_document_field(document, "Описание"),
-            prio=metadata.get("prio") or get_document_field(document, "Приоритет"),
-            label=metadata.get("labels") or get_document_field(document, "Метка"),
+            name=metadata.get("name") or get_document_field(
+                document, "Название"),
+            desc=metadata.get("desc") or get_document_field(
+                document, "Описание"),
+            prio=metadata.get("prio") or get_document_field(
+                document, "Приоритет"),
+            label=metadata.get("labels") or get_document_field(
+                document, "Метка"),
             created_at=metadata.get("created_at"),
             finished_at=metadata.get("finished_at"),
         )
@@ -205,6 +208,7 @@ def load_tasks_from_chroma():
                 )
         except Exception as exc:
             print(f"Failed to update ChromaDB metadata: {exc}")
+
 
 def get_trello_data():
     now = time.monotonic()
@@ -381,17 +385,12 @@ def build_message_text_with_similar_tasks(
         return original_text
 
     return "\n".join([
-        "Новая тудушка:",
+        "Новая задача:",
         original_text.strip(),
         "",
         "Самые похожие задачи из истории:",
         similar_tasks_context,
-        "",
-        (
-            "Используй похожие задачи как контекст для оценки меток, "
-            "приоритета, сроков и roadmap. Новую задачу сформируй только "
-            "по новой тудушке."
-        ),
+        ""
     ])
 
 
@@ -747,13 +746,15 @@ def add_or_update_task(task_req: TaskRequest):
                 try:
                     update_bm25_index_locked()
                 except Exception as rollback_exc:
-                    print(f"Failed to rebuild BM25 after rollback: {rollback_exc}")
+                    print(
+                        f"Failed to rebuild BM25 after rollback: {rollback_exc}")
 
             try:
                 with chroma_lock:
                     collection.delete(ids=[task_id])
             except Exception as rollback_exc:
-                print(f"Failed to rollback ChromaDB task {task_id}: {rollback_exc}")
+                print(
+                    f"Failed to rollback ChromaDB task {task_id}: {rollback_exc}")
 
             raise
 
