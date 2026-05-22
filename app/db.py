@@ -100,11 +100,11 @@ class DBFacade:
             with self.engine.connect() as conn:                
                 projects = conn.execute(
                     sa.text(
-                        "select utp.project_id, p.name, p.description" \
-                        "from users_to_projects as utp" \
-                        "join projects as p" \
-                        "on utp.project_id = p.id" \
-                        "where utp.user_id = :user_id"
+                        "select utp.project_id, p.name, p.description " \
+                        "from users_to_projects as utp " \
+                        "join projects as p " \
+                        "on utp.project_id = p.id " \
+                        "where utp.user_id = :user_id "
                     ),
                     {"user_id": user_id}
                 ).fetchall()
@@ -123,11 +123,11 @@ class DBFacade:
             with self.engine.connect() as conn:                
                 users = conn.execute(
                     sa.text(
-                        "select utp.user_id, u.login, utp.role" \
-                        "from users_to_projects as utp" \
-                        "join users as u" \
-                        "on utp.user_id = u.id" \
-                        "where utp.project_id = :project_id"
+                        "select utp.user_id, u.login, utp.role " \
+                        "from users_to_projects as utp " \
+                        "join users as u " \
+                        "on utp.user_id = u.id " \
+                        "where utp.project_id = :project_id "
                     ),
                     {"project_id": project_id}
                 ).fetchall()
@@ -161,9 +161,9 @@ class DBFacade:
             with self.engine.connect() as conn:
                 role = conn.execute(
                     sa.text(
-                        "select role" \
-                        "from users_to_projects"
-                        "where user_id = :user_id and project_id = :project_id"
+                        "select role " \
+                        "from users_to_projects "
+                        "where user_id = :user_id and project_id = :project_id "
                     ),
                     {"user_id": user_id, "project_id": project_id}
                 ).fetchone()
