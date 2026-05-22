@@ -23,7 +23,7 @@ from dotenv import load_dotenv
 import chromadb
 from common.deadline import calculate_deadline
 
-# Add parent directory to path for db imports
+# Добавление родительской директории в пути поиска для импорта модулей db
 APP_DIR = Path(__file__).parent.resolve()
 BASE_DIR = APP_DIR.parent
 sys.path.insert(0, str(BASE_DIR))
@@ -86,7 +86,7 @@ async_client = AsyncOpenAI(
     max_retries=2,
 )
 
-# Initialize RAG system
+# Инициализация RAG-системы
 CHROMA_PATH = BASE_DIR / 'db' / 'chroma_db'
 CHROMA_PATH.mkdir(parents=True, exist_ok=True)
 
@@ -96,7 +96,7 @@ ef = PplxEmbedding(model='perplexity/pplx-embed-v1-0.6b', client=client)
 collection = client_chroma.get_or_create_collection(
     name='TODO', embedding_function=ef)
 
-# Store for BM25 search
+# Хранилище для BM25-поиска
 tasks_store: dict[str, RetrievalTask] = {}
 bm25_index = None
 state_lock = RLock()
@@ -111,7 +111,7 @@ TRELLO_CACHE_TTL_SECONDS = 300
 
 
 def update_bm25_index_locked():
-    """Update BM25 index from current tasks"""
+    """Обновление индекса BM25 на основе текущих задач"""
     global bm25_index
     if tasks_store:
         ids = list(tasks_store.keys())
@@ -161,7 +161,7 @@ def normalize_chroma_metadata(metadata: dict | None, document: str | None) -> di
 
 
 def load_tasks_from_chroma():
-    """Restore in-memory BM25 state from persistent ChromaDB data."""
+    """Восстановление состояния BM25 в оперативной памяти из постоянного хранилища ChromaDB."""
     with chroma_lock:
         chroma_data = collection.get(include=["documents", "metadatas"])
 
@@ -684,7 +684,11 @@ def search_tasks(search_req: SearchRequest):
                 for task in candidate_tasks[:RERANK_TOP_N]
             ]
         else:
-            search_results = reranked_results
+            # Фильтруем задачи из RAG по relevance_score: если он выше 0.5, то задачу оставляем
+            search_results = [
+                task for task in reranked_results
+                if task.get("reranker_score") is not None and task["reranker_score"] > 0.5
+            ]
 
         response = {
             "status": "success",

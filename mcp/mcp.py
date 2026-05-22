@@ -29,7 +29,7 @@ TRELLO_API_KEY = os.getenv("TRELLO_API_KEY")
 TRELLO_TOKEN = os.getenv("TRELLO_TOKEN")
 TRELLO_LIST_ID = os.getenv("TRELLO_LIST_ID")
 
-# body
+# тело запроса
 class Card(BaseModel):
     name: str
     desc: str
