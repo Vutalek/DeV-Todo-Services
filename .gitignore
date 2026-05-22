@@ -211,3 +211,5 @@ test.py
 benchmark/data/examples.jsonl
 benchmark/res/results.jsonl
 db/chroma_db/
+.DS_Store
+db/.DS_Store

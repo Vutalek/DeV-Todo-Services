@@ -1,6 +1,6 @@
 import os
+import requests
 
-from trello import TrelloApi
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -28,7 +28,6 @@ app.add_middleware(
 TRELLO_API_KEY = os.getenv("TRELLO_API_KEY")
 TRELLO_TOKEN = os.getenv("TRELLO_TOKEN")
 TRELLO_LIST_ID = os.getenv("TRELLO_LIST_ID")
-trello = TrelloApi(TRELLO_API_KEY, TRELLO_TOKEN)
 
 # body
 class Card(BaseModel):
@@ -69,13 +68,21 @@ def sendtask(card: Card):
     )
 
     try:
-        result = trello.cards.new(
-            name=card.name,
-            desc=extended_desc,
-            idList=TRELLO_LIST_ID,
-            due=deadline_iso,
+        response = requests.post(
+            "https://api.trello.com/1/cards",
+            params={
+                "key": TRELLO_API_KEY,
+                "token": TRELLO_TOKEN,
+                "idList": TRELLO_LIST_ID,
+                "name": card.name,
+                "desc": extended_desc,
+                "due": deadline_iso,
+            },
+            timeout=10.0,
         )
-    except Exception as exc:
+        response.raise_for_status()
+        result = response.json()
+    except requests.RequestException as exc:
         return JSONResponse(
             status_code=502,
             content={

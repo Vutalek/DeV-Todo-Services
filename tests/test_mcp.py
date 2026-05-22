@@ -1,3 +1,4 @@
+import requests
 from fastapi.testclient import TestClient
 
 import mcp.mcp as mod
@@ -21,18 +22,19 @@ def test_mcp_sendtask_missing_env_returns_502(monkeypatch):
 def test_mcp_sendtask_creates_card(monkeypatch):
     calls = {}
 
-    class Cards:
-        def new(self, **kwargs):
-            calls.update(kwargs)
-            return {"id": "card-1"}
-
-    class Trello:
-        cards = Cards()
+    def mock_post(url, params=None, **kwargs):
+        calls.update(params or {})
+        class MockResponse:
+            def raise_for_status(self):
+                pass
+            def json(self):
+                return {"id": "card-1"}
+        return MockResponse()
 
     monkeypatch.setattr(mod, "TRELLO_API_KEY", "key")
     monkeypatch.setattr(mod, "TRELLO_TOKEN", "token")
     monkeypatch.setattr(mod, "TRELLO_LIST_ID", "list-1")
-    monkeypatch.setattr(mod, "trello", Trello())
+    monkeypatch.setattr(requests, "post", mock_post)
     client = TestClient(mod.app)
 
     response = client.post(
@@ -49,17 +51,13 @@ def test_mcp_sendtask_creates_card(monkeypatch):
 
 
 def test_mcp_sendtask_trello_exception_returns_502(monkeypatch):
-    class Cards:
-        def new(self, **kwargs):
-            raise RuntimeError("trello down")
-
-    class Trello:
-        cards = Cards()
+    def mock_post(url, params=None, **kwargs):
+        raise requests.RequestException("trello down")
 
     monkeypatch.setattr(mod, "TRELLO_API_KEY", "key")
     monkeypatch.setattr(mod, "TRELLO_TOKEN", "token")
     monkeypatch.setattr(mod, "TRELLO_LIST_ID", "list-1")
-    monkeypatch.setattr(mod, "trello", Trello())
+    monkeypatch.setattr(requests, "post", mock_post)
     client = TestClient(mod.app)
 
     response = client.post(

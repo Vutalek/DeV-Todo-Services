@@ -602,9 +602,25 @@ def add_or_update_task(task_req: TaskRequest):
                 metadatas=[metadata],
             )
 
-        with state_lock:
-            tasks_store[task_id] = task
-            update_bm25_index_locked()
+        try:
+            with state_lock:
+                tasks_store[task_id] = task
+                update_bm25_index_locked()
+        except Exception:
+            with state_lock:
+                tasks_store.pop(task_id, None)
+                try:
+                    update_bm25_index_locked()
+                except Exception as rollback_exc:
+                    print(f"Failed to rebuild BM25 after rollback: {rollback_exc}")
+
+            try:
+                with chroma_lock:
+                    collection.delete(ids=[task_id])
+            except Exception as rollback_exc:
+                print(f"Failed to rollback ChromaDB task {task_id}: {rollback_exc}")
+
+            raise
 
         return {
             "status": "success",

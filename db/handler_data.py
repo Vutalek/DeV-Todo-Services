@@ -1,7 +1,7 @@
 from pydantic import BaseModel, ValidationError
 from datetime import datetime
 import pandas as pd
-from common.deadline import calculate_working_hours_between
+from common.deadline import WORK_TIMEZONE, calculate_working_hours_between
 
 BUSINESS_DAY_HOURS = 8
 
@@ -27,7 +27,11 @@ def parse_datetime(value: str | None) -> datetime | None:
     if value.endswith('Z'):
         value = f'{value[:-1]}+00:00'
 
-    return datetime.fromisoformat(value)
+    parsed = datetime.fromisoformat(value)
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=WORK_TIMEZONE)
+
+    return parsed
 
 
 def compute_lead_time_hours(
