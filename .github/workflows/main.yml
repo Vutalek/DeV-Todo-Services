@@ -20,7 +20,7 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT || '22' }}
           source: "."
-          target: ${{ secrets.APP_DIR }}
+          target: ${{ secrets.APP_DIR }}_dev
           exclude: ".git,node_modules,.env,*.log,docker-compose.yml"
 
       - name: Deploy via SSH
@@ -34,7 +34,7 @@ jobs:
           script: |
             set -e
 
-            APP_DIR="${{ secrets.APP_DIR }}"
+            APP_DIR="${{ secrets.APP_DIR }}_dev"
             TRELLO_API_KEY="${{ secrets.TRELLO_API_KEY }}"
             TRELLO_TOKEN="${{ secrets.TRELLO_TOKEN }}"
             TRELLO_BOARD_ID="${{ secrets.TRELLO_BOARD_ID }}"
@@ -58,10 +58,10 @@ jobs:
             chmod 600 .env
 
             # Сборка образа
-            docker build -t app .
+            docker build -t app-dev .
 
             # Постоянное хранилище ChromaDB между деплоями
-            docker volume create app-chroma-db >/dev/null
+            docker volume create app-dev-chroma-db >/dev/null
 
             healthcheck() {
               PORT="$1"
@@ -84,34 +84,34 @@ jobs:
             }
 
             # Проверяем новый контейнер до остановки текущего app
-            docker rm -f app-new 2>/dev/null || true
+            docker rm -f app-dev-new 2>/dev/null || true
             docker run -d \
-              --name app-new \
+              --name app-dev-new \
               --env-file .env \
-              -v app-chroma-db:/app/db/chroma_db \
-              -p 8001:8000 \
+              -v app-dev-chroma-db:/app/db/chroma_db \
+              -p 9001:9000 \
               app
 
-            if ! healthcheck 8001 app-new; then
-              docker rm -f app-new 2>/dev/null || true
+            if ! healthcheck 9001 app-dev-new; then
+              docker rm -f app-dev-new 2>/dev/null || true
               exit 1
             fi
 
             # Новый образ проверен, теперь можно переключать production container
-            docker stop app 2>/dev/null || true
-            docker rm app 2>/dev/null || true
-            docker rm -f app-new 2>/dev/null || true
+            docker stop app-dev 2>/dev/null || true
+            docker rm app-dev 2>/dev/null || true
+            docker rm -f app-dev-new 2>/dev/null || true
 
             # Запускаем новый контейнер с .env
             docker run -d \
-              --name app \
+              --name app-dev \
               --env-file .env \
-              -v app-chroma-db:/app/db/chroma_db \
+              -v app-dev-chroma-db:/app/db/chroma_db \
               -p 8000:8000 \
               --restart unless-stopped \
-              app
+              app-dev
 
-            healthcheck 8000 app
+            healthcheck 9000 app-dev
 
             # Очищаем старые образы
             docker image prune -f

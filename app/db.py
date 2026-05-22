@@ -103,7 +103,7 @@ class DBFacade:
                         "select utp.project_id, p.name, p.description" \
                         "from users_to_projects as utp" \
                         "join projects as p" \
-                        "by utp.project_id = p.id" \
+                        "on utp.project_id = p.id" \
                         "where utp.user_id = :user_id"
                     ),
                     {"user_id": user_id}
@@ -126,7 +126,7 @@ class DBFacade:
                         "select utp.user_id, u.login, utp.role" \
                         "from users_to_projects as utp" \
                         "join users as u" \
-                        "by utp.user_id = u.id" \
+                        "on utp.user_id = u.id" \
                         "where utp.project_id = :project_id"
                     ),
                     {"project_id": project_id}
@@ -207,3 +207,24 @@ class DBFacade:
             logger.error(f"Failed to add member {login_to} for {project}.")
             return False
         
+        
+    def delete_project(self, login: str, project: str) -> bool:
+        permissions = self.get_user_permissions(login, project)
+        if "delete" not in permissions:
+            return False
+
+        project_id = self.get_project_id(login, project)
+        if project_id == "":
+            return False
+
+        try:
+            with self.engine.connect() as conn:
+                conn.execute(
+                    sa.text("delete from projects where id = :id"),
+                    {"id": project_id}
+                )
+                conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Failed to delete project {login}/{project}: {e}.")
+            return False
