@@ -1,8 +1,6 @@
 from db.bm25 import BM25TaskSearch, rrf_fusion
 from db.handler_data import (
     RetrievalTask,
-    csv_to_tasks,
-    load_tasks_to_chroma,
     task_to_document,
     task_to_metadata,
 )
@@ -91,9 +89,6 @@ async_client = AsyncOpenAI(
 # Initialize RAG system
 CHROMA_PATH = BASE_DIR / 'db' / 'chroma_db'
 CHROMA_PATH.mkdir(parents=True, exist_ok=True)
-SEED_TASKS_LIMIT = 1000
-IMAGE_SEED_TASKS_CSV = BASE_DIR / 'seed' / 'apache_issues.csv'
-LEGACY_SEED_TASKS_CSV = CHROMA_PATH / 'apache_issues.csv'
 
 client_chroma = chromadb.PersistentClient(path=str(CHROMA_PATH))
 

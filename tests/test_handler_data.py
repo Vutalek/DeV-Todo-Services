@@ -4,7 +4,6 @@ from db.handler_data import (
     RetrievalTask,
     compute_business_days,
     compute_lead_time_hours,
-    csv_to_tasks,
     parse_datetime,
     task_to_document,
     task_to_metadata,
@@ -80,32 +79,3 @@ def test_task_to_metadata_contains_working_duration():
     assert metadata["business_days"] == 0.25
     assert metadata["lead_time_hours"] == 2.0
 
-
-def test_csv_to_tasks_loads_valid_rows(tmp_path: Path):
-    csv_path = tmp_path / "tasks.csv"
-    csv_path.write_text(
-        "url,desc,name,issue_type,priority,created,resolved\n"
-        "http://x,Desc,Name,Bug,High,2024-05-06T10:00:00+03:00,2024-05-06T12:00:00+03:00\n",
-        encoding="utf-8",
-    )
-
-    tasks = csv_to_tasks(str(csv_path))
-
-    assert len(tasks) == 1
-    assert tasks[0].name == "Name"
-
-
-def test_csv_to_tasks_drops_duplicate_rows(tmp_path: Path):
-    csv_path = tmp_path / "tasks.csv"
-    row = (
-        "http://x,Desc,Name,Bug,High,"
-        "2024-05-06T10:00:00+03:00,2024-05-06T12:00:00+03:00\n"
-    )
-    csv_path.write_text(
-        "url,desc,name,issue_type,priority,created,resolved\n" + row + row,
-        encoding="utf-8",
-    )
-
-    tasks = csv_to_tasks(str(csv_path))
-
-    assert len(tasks) == 1

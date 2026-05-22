@@ -1,6 +1,5 @@
 from pydantic import BaseModel, ValidationError
 from datetime import datetime
-import pandas as pd
 from common.deadline import WORK_TIMEZONE, calculate_working_hours_between
 
 BUSINESS_DAY_HOURS = 8
@@ -98,49 +97,3 @@ def task_to_metadata(task: RetrievalTask) -> dict:
         ),
     }
 
-
-def load_tasks_to_chroma(collection, tasks: list[RetrievalTask]):
-    ids = []
-    documents = []
-    metadatas = []
-
-    for i, task in enumerate(tasks):
-        ids.append(f'task_{i}')
-        documents.append(task_to_document(task))
-        metadatas.append(task_to_metadata(task))
-
-    collection.add(
-        ids=ids,
-        documents=documents,
-        metadatas=metadatas,
-    )
-
-
-def csv_to_tasks(file_path: str) -> list[RetrievalTask]:
-
-    df = pd.read_csv(file_path)
-    df = df.drop(columns=['url'])
-
-    df = df.dropna()
-    df = df.drop_duplicates()
-
-    tasks = []
-    for row in df.iterrows():
-
-        task = {
-            'name': (row[1]['name']),
-            'desc': (row[1]['desc']),
-            'prio': (row[1]['priority']),
-            'label': (row[1]['issue_type']),
-            'created_at': (row[1]['created']),
-            'finished_at': (row[1]['resolved']),
-        }
-
-        try:
-            task = RetrievalTask.model_validate(task)
-            tasks.append(task)
-        except ValidationError as e:
-            print('-' * 250)
-            print(f'[ERROR] {e.errors()}')
-
-    return tasks

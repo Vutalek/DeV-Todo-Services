@@ -11,7 +11,6 @@ dependencies = [
     "numpy>=1.24.0",
     "openai>=2.24.0",
     "orjson>=3.11.8",
-    "pandas>=3.0.2",
     "rank-bm25>=0.2.2",
     "requests>=2.33.1",
     "trello>=0.9.7.3,<0.10",
