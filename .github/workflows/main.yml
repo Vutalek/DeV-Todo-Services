@@ -100,10 +100,10 @@ jobs:
               --name app-dev-new \
               --env-file .env \
               -v app-dev-chroma-db:/app/db/chroma_db \
-              -p 9001:9000 \
+              -p 8801:8000 \
               app
 
-            if ! healthcheck 9001 app-dev-new; then
+            if ! healthcheck 8801 app-dev-new; then
               docker rm -f app-dev-new 2>/dev/null || true
               exit 1
             fi
@@ -118,11 +118,11 @@ jobs:
               --name app-dev \
               --env-file .env \
               -v app-dev-chroma-db:/app/db/chroma_db \
-              -p 8000:8000 \
+              -p 8800:8000 \
               --restart unless-stopped \
               app-dev
 
-            healthcheck 9000 app-dev
+            healthcheck 8800 app-dev
 
             # Очищаем старые образы
             docker image prune -f

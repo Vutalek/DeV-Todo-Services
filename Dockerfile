@@ -59,4 +59,4 @@ USER appuser
 EXPOSE 8000
 
 # Run the application. Keep one worker because BM25 lives in process memory.
-CMD uvicorn app.app:app --host 0.0.0.0 --port 9000 --workers 1
+CMD uvicorn app.app:app --host 0.0.0.0 --port 8000 --workers 1
