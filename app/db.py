@@ -51,7 +51,6 @@ class DBFacade:
             login,
         )
         if result is None:
-            logger.error(f"Failed to get user {login}.")
             return ""
         return result["id"]
 

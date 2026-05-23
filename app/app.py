@@ -522,10 +522,14 @@ def heartbeat():
 
 @app.post("/register")
 async def register(form_data: Annotated[OAuth2PasswordRequestForm, Depends()]):
-    await db.create_user(form_data.username, form_data.password)
-    
-    token = auth.create_access_token(data={"sub": form_data.username})
-    return Token(access_token=token, token_type="bearer")
+    exists = await db.get_user_id(form_data.username)
+    if bool(exists):
+        await db.create_user(form_data.username, form_data.password)
+        
+        token = auth.create_access_token(data={"sub": form_data.username})
+        return Token(access_token=token, token_type="bearer")
+    else:
+        return {"status": "error", "message": "user already exists"}
 
 class Token(BaseModel):
     access_token: str
