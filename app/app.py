@@ -523,13 +523,15 @@ def heartbeat():
 @app.post("/register")
 async def register(form_data: Annotated[OAuth2PasswordRequestForm, Depends()]):
     exists = await db.get_user_id(form_data.username)
-    if exists == "":
-        await db.create_user(form_data.username, form_data.password)
-        
-        token = auth.create_access_token(data={"sub": form_data.username})
-        return Token(access_token=token, token_type="bearer")
-    else:
-        return {"status": "error", "message": "user already exists"}
+    if exists != "":
+        raise HTTPException(status_code=409, detail="User already exists")
+
+    is_created = await db.create_user(form_data.username, form_data.password)
+    if not is_created:
+        raise HTTPException(status_code=500, detail="Failed to create user")
+
+    token = auth.create_access_token(data={"sub": form_data.username})
+    return Token(access_token=token, token_type="bearer")
 
 class Token(BaseModel):
     access_token: str
@@ -537,9 +539,12 @@ class Token(BaseModel):
 
 @app.post("/token")
 async def token(form_data: Annotated[OAuth2PasswordRequestForm, Depends()]):
-    is_authenticated = auth.authenticate_user(form_data.username, form_data.password)
+    is_authenticated = await auth.authenticate_user(
+        form_data.username,
+        form_data.password,
+    )
     if not is_authenticated:
-        return {"status": "error", "message": "Invalid credentials"}
+        raise HTTPException(status_code=401, detail="Invalid credentials")
     
     token = auth.create_access_token(data={"sub": form_data.username})
     return Token(access_token=token, token_type="bearer")

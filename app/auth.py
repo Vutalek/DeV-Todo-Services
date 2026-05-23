@@ -26,7 +26,8 @@ class AuthHandler:
     async def authenticate_user(self, login: str, password: str) -> bool:
         pwd_hash = await self.db.get_user_password_hash(login)
         if pwd_hash == "":
-            return self.verify_password(password, self.dummy_hash)
+            self.verify_password(password, self.dummy_hash)
+            return False
         return self.verify_password(password, pwd_hash)
 
     def create_access_token(self, data: dict) -> str:
@@ -36,7 +37,7 @@ class AuthHandler:
     
     def verify_token(self, token: str) -> str | None:
         try:
-            payload = jwt.decode(token, os.environ.get("JWT_SECRET_KEY", ""), algorithms=[os.environ.get("JWT_ALGORITHM", "")])
+            payload = jwt.decode(token, self.__secret_key, algorithms=[self.__algorithm])
             login = payload.get("sub")
             if login is None:
                 raise jwt.InvalidTokenError
