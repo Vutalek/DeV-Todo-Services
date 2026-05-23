@@ -40,6 +40,12 @@ jobs:
             TRELLO_BOARD_ID="${{ secrets.TRELLO_BOARD_ID }}"
             ROUTER_API_KEY="${{ secrets.ROUTER_API_KEY }}"
             TRELLO_LIST_ID="${{ secrets.TRELLO_LIST_ID }}"
+            
+            POSTGRES_HOST="${{ secrets.POSTGRES_HOST }}"
+            POSTGRES_PORT="${{ secrets.POSTGRES_PORT }}"
+            POSTGRES_DB="${{ secrets.POSTGRES_DB }}"
+            POSTGRES_USER="${{ secrets.POSTGRES_USER }}"
+            POSTGRES_PASSWORD="${{ secrets.POSTGRES_PASSWORD }}"
 
             # Создаём директорию приложения, если её нет
             mkdir -p $APP_DIR
@@ -52,6 +58,11 @@ jobs:
             TRELLO_BOARD_ID=$TRELLO_BOARD_ID
             ROUTER_API_KEY=$ROUTER_API_KEY
             TRELLO_LIST_ID=$TRELLO_LIST_ID
+            POSTGRES_HOST=$POSTGRES_HOST
+            POSTGRES_PORT=POSTGRES_PORT
+            POSTGRES_DB=POSTGRES_DB
+            POSTGRES_USER=POSTGRES_USER
+            POSTGRES_PASSWORD=POSTGRES_PASSWORD
             EOF
 
             # Ограничиваем права доступа
