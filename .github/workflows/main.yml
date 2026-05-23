@@ -47,6 +47,9 @@ jobs:
             POSTGRES_USER="${{ secrets.POSTGRES_USER }}"
             POSTGRES_PASSWORD="${{ secrets.POSTGRES_PASSWORD }}"
 
+            JWT_SECRET_KEY="${{ secrets.JWT_SECRET_KEY }}"
+            JWT_ALGORITHM="${{ secrets.JWT_ALGORITHM }}"
+
             # Создаём директорию приложения, если её нет
             mkdir -p $APP_DIR
             cd $APP_DIR
@@ -63,6 +66,8 @@ jobs:
             POSTGRES_DB=$POSTGRES_DB
             POSTGRES_USER=$POSTGRES_USER
             POSTGRES_PASSWORD=$POSTGRES_PASSWORD
+            JWT_SECRET_KEY=$JWT_SECRET_KEY
+            JWT_ALGORITHM=$JWT_ALGORITHM
             EOF
 
             # Ограничиваем права доступа
