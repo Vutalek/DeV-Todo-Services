@@ -520,6 +520,13 @@ load_tasks_from_chroma()
 def heartbeat():
     return {"status": "alive"}
 
+@app.post("/register")
+async def register(form_data: Annotated[OAuth2PasswordRequestForm, Depends()]):
+    await db.create_user(form_data.username, form_data.password)
+    
+    token = auth.create_access_token(data={"sub": form_data.username})
+    return Token(access_token=token, token_type="bearer")
+
 class Token(BaseModel):
     access_token: str
     token_type: str
