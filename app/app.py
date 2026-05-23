@@ -15,15 +15,21 @@ import time
 from threading import RLock
 from pathlib import Path
 from uuid import uuid4
+from typing import Annotated
+
 from openai import AsyncOpenAI, OpenAI
 from pydantic import BaseModel, Field, create_model
 from typing import Literal, List, Type
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from dotenv import load_dotenv
 import chromadb
+
 from common.deadline import calculate_deadline
+from .db import DBFacade
+from .auth import AuthHandler
 
 # Add parent directory to path for db imports
 APP_DIR = Path(__file__).parent.resolve()
@@ -53,6 +59,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+db = DBFacade()
+auth = AuthHandler()
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 MODEL = "deepseek/deepseek-v4-flash"
 RERANK_MODEL = "cohere/rerank-4-fast"
@@ -510,9 +520,23 @@ load_tasks_from_chroma()
 def heartbeat():
     return {"status": "alive"}
 
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+@app.post("/token")
+async def token(form_data: Annotated[OAuth2PasswordRequestForm, Depends()]):
+    is_authenticated = auth.authenticate_user(form_data.username, form_data.password)
+    if not is_authenticated:
+        return {"status": "error", "message": "Invalid credentials"}
+    
+    token = auth.create_access_token(data={"sub": form_data.username})
+    return Token(access_token=token, token_type="bearer")
 
 @app.post("/app/v1/send")
-async def sendtask(message: Message):
+async def sendtask(message: Message, token: Annotated[str, Depends(oauth2_scheme)]):
+    if not auth.verify_token(token):
+        return {"status": "error", "message": "Invalid token"}
     if not ROUTER_API_KEY:
         return JSONResponse(
             status_code=502,
@@ -574,10 +598,12 @@ async def sendtask(message: Message):
 
 
 @app.post("/app/v1/tasks")
-def add_or_update_task(task_req: TaskRequest):
+def add_or_update_task(task_req: TaskRequest, token: Annotated[str, Depends(oauth2_scheme)]):
     """
     Добавить или обновить задачу в БД RAG-поиска.
     """
+    if not auth.verify_token(token):
+        return {"status": "error", "message": "Invalid token"}
     try:
         # Создать объект RetrievalTask
         task = RetrievalTask(
@@ -623,10 +649,12 @@ def add_or_update_task(task_req: TaskRequest):
 
 
 @app.post("/app/v1/search")
-def search_tasks(search_req: SearchRequest):
+def search_tasks(search_req: SearchRequest, token: Annotated[str, Depends(oauth2_scheme)]):
     """
     Поиск задач в БД с использованием гибридного поиска (BM25 + Vector).
     """
+    if not auth.verify_token(token):
+        return {"status": "error", "message": "Invalid token"}
     try:
         with state_lock:
             if not tasks_store or bm25_index is None:

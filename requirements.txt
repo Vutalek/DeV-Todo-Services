@@ -12,5 +12,5 @@ pytest>=8.0.0
 pwdlib
 pwdlib[argon2]
 sqlalchemy
-jwt
+pyjwt
 asyncpg

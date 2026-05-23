@@ -1,12 +1,11 @@
 import os
 
 from pwdlib import PasswordHash
-import sqlalchemy as sa
 import jwt
 from dotenv import load_dotenv
 load_dotenv()
 
-from db_handler import DBHandler
+from .db import DBFacade
 
 
 class AuthHandler:
@@ -16,7 +15,7 @@ class AuthHandler:
 
         self.password_hasher = PasswordHash.recommended()
         self.dummy_hash = self.password_hasher.hash("dummy_password")
-        self.db = DBHandler()
+        self.db = DBFacade()
 
     def hash_password(self, password: str) -> str:
         return self.password_hasher.hash(password)
@@ -24,16 +23,11 @@ class AuthHandler:
     def verify_password(self, password: str, hashed_password: str) -> bool:
         return self.password_hasher.verify(password, hashed_password)
     
-    def authenticate_user(self, username: str, password: str) -> bool:
-        with self.db.engine.connect() as connection:
-            result = connection.execute(
-                sa.text("select * from users where username = :username"),
-                {"username": username}
-            )
-            user = result.fetchone()
-        if not user:
+    async def authenticate_user(self, login: str, password: str) -> bool:
+        pwd_hash = await self.db.get_user_password_hash(login)
+        if not pwd_hash:
             return self.verify_password(password, self.dummy_hash)
-        return self.verify_password(password, user.password_hash)
+        return self.verify_password(password, pwd_hash)
 
     def create_access_token(self, data: dict) -> str:
         to_encode = data.copy()
@@ -42,10 +36,10 @@ class AuthHandler:
     
     def verify_token(self, token: str) -> str | None:
         try:
-            payload = jwt.decode(token, os.environ.get("JWT_SECRET_KEY"), algorithms=[os.environ.get("JWT_ALGORITHM", "")])
-            username = payload.get("sub")
-            if username is None:
+            payload = jwt.decode(token, os.environ.get("JWT_SECRET_KEY", ""), algorithms=[os.environ.get("JWT_ALGORITHM", "")])
+            login = payload.get("sub")
+            if login is None:
                 raise jwt.InvalidTokenError
-            return username
+            return login
         except jwt.InvalidTokenError:
             return None
