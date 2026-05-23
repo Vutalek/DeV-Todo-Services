@@ -25,7 +25,7 @@ class AuthHandler:
     
     async def authenticate_user(self, login: str, password: str) -> bool:
         pwd_hash = await self.db.get_user_password_hash(login)
-        if not pwd_hash:
+        if pwd_hash == "":
             return self.verify_password(password, self.dummy_hash)
         return self.verify_password(password, pwd_hash)
 
