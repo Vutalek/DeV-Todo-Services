@@ -82,11 +82,12 @@ class DBFacade:
             pwd_hash = self.hasher.hash(password)
             pool = await self.connect()
             async with pool.acquire() as conn:
-                await conn.execute(
-                    "insert into users (login, password) values ($1, $2)",
-                    login,
-                    pwd_hash,
-                )
+                async with conn.transaction():
+                    await conn.execute(
+                        "insert into users (login, password) values ($1, $2)",
+                        login,
+                        pwd_hash,
+                    )
             logger.debug(f"Create new user {login}.")
             return True
         except Exception as e:
@@ -248,21 +249,22 @@ class DBFacade:
         try:
             pool = await self.connect()
             async with pool.acquire() as conn:
-                project_id = await self._get_project_id(login_from, project, conn)
-                if project_id == "":
-                    return False
+                async with conn.transaction():
+                    project_id = await self._get_project_id(login_from, project, conn)
+                    if project_id == "":
+                        return False
 
-                user_id = await self._get_user_id(login_to, conn)
-                if user_id == "":
-                    return False
+                    user_id = await self._get_user_id(login_to, conn)
+                    if user_id == "":
+                        return False
 
-                await conn.execute(
-                    "insert into users_to_projects (user_id, project_id, role) "
-                    "values ($1, $2, $3)",
-                    user_id,
-                    project_id,
-                    "PROJECT_MEMBER",
-                )
+                    await conn.execute(
+                        "insert into users_to_projects (user_id, project_id, role) "
+                        "values ($1, $2, $3)",
+                        user_id,
+                        project_id,
+                        "PROJECT_MEMBER",
+                    )
             return True
         except Exception as e:
             logger.error(f"Failed to add member {login_to} for {project}: {e}.")
@@ -276,14 +278,15 @@ class DBFacade:
         try:
             pool = await self.connect()
             async with pool.acquire() as conn:
-                project_id = await self._get_project_id(login, project, conn)
-                if project_id == "":
-                    return False
+                async with conn.transaction():
+                    project_id = await self._get_project_id(login, project, conn)
+                    if project_id == "":
+                        return False
 
-                await conn.execute(
-                    "delete from projects where id = $1",
-                    project_id,
-                )
+                    await conn.execute(
+                        "delete from projects where id = $1",
+                        project_id,
+                    )
             return True
         except Exception as e:
             logger.error(f"Failed to delete project {login}/{project}: {e}.")
