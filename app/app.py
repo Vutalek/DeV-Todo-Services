@@ -136,40 +136,10 @@ def get_document_field(document: str | None, field_name: str) -> str:
     return ""
 
 
-def normalize_chroma_metadata(metadata: dict | None, document: str | None) -> dict:
-    metadata = dict(metadata or {})
-
-    if not metadata.get("created_at") or not metadata.get("finished_at"):
-        return metadata
-
-    try:
-        task = RetrievalTask(
-            name=metadata.get("name") or get_document_field(
-                document, "Название"),
-            desc=metadata.get("desc") or get_document_field(
-                document, "Описание"),
-            prio=metadata.get("prio") or get_document_field(
-                document, "Приоритет"),
-            label=metadata.get("labels") or get_document_field(
-                document, "Метка"),
-            created_at=metadata.get("created_at"),
-            finished_at=metadata.get("finished_at"),
-        )
-        recalculated = task_to_metadata(task)
-    except Exception:
-        return metadata
-
-    metadata["business_days"] = recalculated["business_days"]
-    metadata["lead_time_hours"] = recalculated["lead_time_hours"]
-    return metadata
-
-
 def load_tasks_from_chroma():
     """Восстановление состояния BM25 в оперативной памяти из постоянного хранилища ChromaDB."""
     with chroma_lock:
         chroma_data = collection.get(include=["documents", "metadatas"])
-
-    metadata_updates = []
 
     with state_lock:
         tasks_store.clear()
@@ -179,35 +149,17 @@ def load_tasks_from_chroma():
             chroma_data.get("documents", []),
             chroma_data.get("metadatas", []),
         ):
-            original_metadata = dict(metadata or {})
-            metadata = normalize_chroma_metadata(metadata, document)
-            if metadata != original_metadata:
-                metadata_updates.append((task_id, metadata))
 
             tasks_store[task_id] = RetrievalTask(
-                name=metadata.get("name") or get_document_field(
-                    document, "Название"),
-                desc=metadata.get("desc") or get_document_field(
-                    document, "Описание"),
-                prio=metadata.get("prio") or get_document_field(
-                    document, "Приоритет"),
-                label=metadata.get("labels") or get_document_field(
-                    document, "Метка"),
+                name=get_document_field(document, "Название") or "",
+                desc=get_document_field(document, "Описание") or "",
+                prio=get_document_field(document, "Приоритет") or "",
+                label=get_document_field(document, "Метка") or "",
                 created_at=metadata.get("created_at") or None,
                 finished_at=metadata.get("finished_at") or None,
             )
 
         update_bm25_index_locked()
-
-    if metadata_updates:
-        try:
-            with chroma_lock:
-                collection.update(
-                    ids=[task_id for task_id, _ in metadata_updates],
-                    metadatas=[metadata for _, metadata in metadata_updates],
-                )
-        except Exception as exc:
-            print(f"Failed to update ChromaDB metadata: {exc}")
 
 
 def get_trello_data():
@@ -271,7 +223,6 @@ def get_chroma_tasks_by_ids(task_ids: list[str]) -> list[dict]:
         chroma_data.get("documents", []),
         chroma_data.get("metadatas", []),
     ):
-        metadata = normalize_chroma_metadata(metadata, document)
         payloads_by_id[task_id] = {
             "id": task_id,
             "document": document or "",
@@ -288,11 +239,10 @@ def get_chroma_tasks_by_ids(task_ids: list[str]) -> list[dict]:
 def task_payload_to_rerank_document(task: dict) -> str:
     metadata = task.get("metadata") or {}
     document = task.get("document") or ""
-    name = metadata.get("name") or get_document_field(document, "Название")
-    desc = metadata.get("desc") or get_document_field(document, "Описание")
-    priority = metadata.get("prio") or get_document_field(
-        document, "Приоритет")
-    label = metadata.get("labels") or get_document_field(document, "Метка")
+    name = get_document_field(document, "Название") or ""
+    desc = get_document_field(document, "Описание") or ""
+    priority = get_document_field(document, "Приоритет") or ""
+    label = get_document_field(document, "Метка") or ""
 
     return "\n".join([
         f"Name: {name}",
@@ -335,12 +285,10 @@ def task_payload_to_search_result(
 ) -> dict:
     metadata = task.get("metadata") or {}
     document = task.get("document") or ""
-    name = metadata.get("name") or get_document_field(document, "Название")
-    desc = metadata.get("desc") or get_document_field(
-        document, "Описание") or document
-    priority = metadata.get("prio") or get_document_field(
-        document, "Приоритет")
-    label = metadata.get("labels") or get_document_field(document, "Метка")
+    name = get_document_field(document, "Название") or ""
+    desc = get_document_field(document, "Описание") or ""
+    priority = get_document_field(document, "Приоритет") or ""
+    label = get_document_field(document, "Метка") or ""
     business_days = metadata.get("business_days", 0)
 
     return {

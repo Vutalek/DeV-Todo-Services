@@ -80,13 +80,10 @@ def task_to_document(task: RetrievalTask) -> str:
 
 def task_to_metadata(task: RetrievalTask) -> dict:
     business_days = compute_business_days(task.created_at, task.finished_at)
-    lead_time_hours = compute_lead_time_hours(task.created_at, task.finished_at)
+    lead_time_hours = compute_lead_time_hours(
+        task.created_at, task.finished_at)
 
     return {
-        'name': task.name,
-        'desc': task.desc,
-        'labels': task.label,
-        'prio': task.prio,
         'created_at': task.created_at or '',
         'finished_at': task.finished_at or '',
         'business_days': (
@@ -96,4 +93,3 @@ def task_to_metadata(task: RetrievalTask) -> dict:
             round(lead_time_hours, 2) if lead_time_hours is not None else 0
         ),
     }
-
