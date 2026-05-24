@@ -75,10 +75,12 @@ def test_get_document_field_missing_returns_empty_string():
     assert get_document_field("Название: Fix auth", "Описание") == ""
 
 
-def test_task_metadata_duration_helpers_use_timestamps():
+def test_task_metadata_duration_helpers_use_stored_values():
     metadata = {
         "created_at": "2024-05-06T10:00:00+03:00",
         "finished_at": "2024-05-06T12:00:00+03:00",
+        "business_days": 0.25,
+        "lead_time_hours": 2.0,
     }
 
     assert task_metadata_to_business_days(metadata) == 0.25
@@ -120,6 +122,8 @@ def test_task_payload_to_fields_uses_document_and_metadata():
         "metadata": {
             "created_at": "2024-05-06T10:00:00+03:00",
             "finished_at": "2024-05-06T12:00:00+03:00",
+            "business_days": 0.25,
+            "lead_time_hours": 2.0,
         },
     }
 
@@ -133,7 +137,7 @@ def test_task_payload_to_fields_uses_document_and_metadata():
     }
 
 
-def test_task_to_metadata_contains_only_timestamps():
+def test_task_to_metadata_contains_timestamps_and_duration():
     task = RetrievalTask(
         name="Fix auth",
         desc="Token bug",
@@ -148,4 +152,6 @@ def test_task_to_metadata_contains_only_timestamps():
     assert metadata == {
         "created_at": "2024-05-06T10:00:00+03:00",
         "finished_at": "2024-05-06T12:00:00+03:00",
+        "business_days": 0.25,
+        "lead_time_hours": 2.0,
     }

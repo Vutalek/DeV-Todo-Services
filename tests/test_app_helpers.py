@@ -24,6 +24,8 @@ def test_task_payload_to_rerank_document_uses_document_and_time_metadata():
         _task_payload(
             created_at="2024-05-06T10:00:00+03:00",
             finished_at="2024-05-06T12:00:00+03:00",
+            business_days=0.25,
+            lead_time_hours=2.0,
         )
     )
 

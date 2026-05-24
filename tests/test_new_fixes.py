@@ -60,6 +60,7 @@ def test_add_or_update_task_rollback_on_failure(monkeypatch):
     # 5. Проверяем, что задача НЕ осталась во временном хранилище tasks_store
     task_id = deleted_ids[0]
     assert task_id not in app_mod.tasks_store
+    assert task_id not in app_mod.task_metadata_store
 
 
 def test_search_tasks_filters_by_relevance_score(monkeypatch):
@@ -73,6 +74,10 @@ def test_search_tasks_filters_by_relevance_score(monkeypatch):
     app_mod.tasks_store = {
         "task_high_id": task_high,
         "task_low_id": task_low,
+    }
+    app_mod.task_metadata_store = {
+        "task_high_id": {"business_days": 0, "lead_time_hours": 0},
+        "task_low_id": {"business_days": 0, "lead_time_hours": 0},
     }
     app_mod.update_bm25_index_locked()
 
@@ -95,6 +100,8 @@ def test_search_tasks_filters_by_relevance_score(monkeypatch):
                 "metadata": {
                     "created_at": "2026-05-22T10:00:00Z",
                     "finished_at": "2026-05-22T12:00:00Z",
+                    "business_days": 0.25,
+                    "lead_time_hours": 2.0,
                 },
             },
             {
@@ -108,6 +115,8 @@ def test_search_tasks_filters_by_relevance_score(monkeypatch):
                 "metadata": {
                     "created_at": "2026-05-22T10:00:00Z",
                     "finished_at": "2026-05-22T12:00:00Z",
+                    "business_days": 0.25,
+                    "lead_time_hours": 2.0,
                 },
             },
         ]

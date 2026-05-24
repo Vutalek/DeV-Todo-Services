@@ -3,7 +3,6 @@ from db.bm25 import BM25TaskSearch, rrf_fusion
 from db.handler_data import (
     RetrievalTask,
     task_from_document_metadata,
-    task_matches_day_filter,
     task_payload_to_fields,
     task_to_document,
     task_to_metadata,
@@ -100,6 +99,7 @@ collection = client_chroma.get_or_create_collection(
 
 # Хранилище для BM25-поиска
 tasks_store: dict[str, RetrievalTask] = {}
+task_metadata_store: dict[str, dict] = {}
 bm25_index = None
 state_lock = RLock()
 chroma_lock = RLock()
@@ -117,8 +117,8 @@ def update_bm25_index_locked():
     global bm25_index
     if tasks_store:
         ids = list(tasks_store.keys())
-        documents = [task_to_document(task) for task in tasks_store.values()]
-        metadatas = [task_to_metadata(task) for task in tasks_store.values()]
+        documents = [task_to_document(tasks_store[task_id]) for task_id in ids]
+        metadatas = [task_metadata_store.get(task_id, {}) for task_id in ids]
         bm25_index = BM25TaskSearch(
             ids=ids, documents=documents, metadatas=metadatas)
     else:
@@ -132,16 +132,19 @@ def load_tasks_from_chroma():
 
     with state_lock:
         tasks_store.clear()
+        task_metadata_store.clear()
 
         for task_id, document, metadata in zip(
             chroma_data.get("ids", []),
             chroma_data.get("documents", []),
             chroma_data.get("metadatas", []),
         ):
+            metadata = metadata or {}
             tasks_store[task_id] = task_from_document_metadata(
                 document,
                 metadata,
             )
+            task_metadata_store[task_id] = metadata
 
         update_bm25_index_locked()
 
@@ -441,7 +444,6 @@ def find_relevant_tasks(search_req: SearchRequest) -> dict:
 
     # Выполнить BM25 поиск
     candidate_count = max(search_req.n_results, RERANK_TOP_N)
-    vector_candidate_count = candidate_count * 3
     where_days = (search_req.min_days, search_req.max_days)
     bm25_results = bm25_snapshot.search(
         query_text,
@@ -454,8 +456,14 @@ def find_relevant_tasks(search_req: SearchRequest) -> dict:
         with chroma_lock:
             vector_results = collection.query(
                 query_texts=[query_text],
-                n_results=vector_candidate_count,
+                n_results=candidate_count,
                 include=['distances'],
+                where={
+                    '$and': [
+                        {'business_days': {'$gte': search_req.min_days}},
+                        {'business_days': {'$lte': search_req.max_days}},
+                    ]
+                }
             )
     except Exception as e:
         print(f"Vector search error: {e}")
@@ -463,7 +471,7 @@ def find_relevant_tasks(search_req: SearchRequest) -> dict:
 
     # Гибридный поиск (RRF fusion)
     hybrid_results = rrf_fusion(
-        vector_results, bm25_results, k=60, top_n=vector_candidate_count)
+        vector_results, bm25_results, k=60, top_n=candidate_count)
 
     candidate_ids = []
     seen_task_ids = set()
@@ -475,14 +483,7 @@ def find_relevant_tasks(search_req: SearchRequest) -> dict:
         seen_task_ids.add(task_id)
         candidate_ids.append(task_id)
 
-    candidate_tasks = [
-        task for task in get_chroma_tasks_by_ids(candidate_ids)
-        if task_matches_day_filter(
-            task,
-            search_req.min_days,
-            search_req.max_days,
-        )
-    ][:candidate_count]
+    candidate_tasks = get_chroma_tasks_by_ids(candidate_ids)
     reranked_results, warning = rerank_tasks(
         query_text,
         candidate_tasks,
@@ -640,10 +641,12 @@ def add_or_update_task(task_req: TaskRequest):
         try:
             with state_lock:
                 tasks_store[task_id] = task
+                task_metadata_store[task_id] = metadata
                 update_bm25_index_locked()
         except Exception:
             with state_lock:
                 tasks_store.pop(task_id, None)
+                task_metadata_store.pop(task_id, None)
                 try:
                     update_bm25_index_locked()
                 except Exception as rollback_exc:

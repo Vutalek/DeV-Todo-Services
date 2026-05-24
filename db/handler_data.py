@@ -69,27 +69,16 @@ def task_metadata_to_business_days(metadata: dict | None) -> float:
     metadata = metadata or {}
 
     try:
-        business_days = compute_business_days(
-            metadata.get('created_at'),
-            metadata.get('finished_at'),
-        )
+        return float(metadata.get('business_days', 0) or 0)
     except (TypeError, ValueError):
         return 0
-
-    if business_days is None:
-        return 0
-
-    return round(business_days, 3)
 
 
 def task_metadata_to_time_hours(metadata: dict | None) -> int | None:
     metadata = metadata or {}
 
     try:
-        lead_time_hours = compute_lead_time_hours(
-            metadata.get('created_at'),
-            metadata.get('finished_at'),
-        )
+        lead_time_hours = float(metadata.get('lead_time_hours', 0) or 0)
     except (TypeError, ValueError):
         return None
 
@@ -97,15 +86,6 @@ def task_metadata_to_time_hours(metadata: dict | None) -> int | None:
         return None
 
     return max(1, round(lead_time_hours))
-
-
-def task_matches_day_filter(
-    task: dict,
-    min_days: int,
-    max_days: int,
-) -> bool:
-    business_days = task_metadata_to_business_days(task.get('metadata'))
-    return min_days <= business_days <= max_days
 
 
 def task_to_document(task: RetrievalTask) -> str:
@@ -161,7 +141,19 @@ def task_payload_to_fields(task: dict) -> dict:
 
 
 def task_to_metadata(task: RetrievalTask) -> dict:
+    business_days = compute_business_days(task.created_at, task.finished_at)
+    lead_time_hours = compute_lead_time_hours(
+        task.created_at,
+        task.finished_at,
+    )
+
     return {
         'created_at': task.created_at or '',
         'finished_at': task.finished_at or '',
+        'business_days': (
+            round(business_days, 3) if business_days is not None else 0
+        ),
+        'lead_time_hours': (
+            round(lead_time_hours, 2) if lead_time_hours is not None else 0
+        ),
     }

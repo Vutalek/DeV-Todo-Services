@@ -14,14 +14,8 @@ def test_bm25_search_returns_best_matching_document():
         ids=["a", "b"],
         documents=["fix auth token", "render dashboard chart"],
         metadatas=[
-            {
-                "created_at": "2024-05-06T10:00:00+03:00",
-                "finished_at": "2024-05-06T18:00:00+03:00",
-            },
-            {
-                "created_at": "2024-05-06T10:00:00+03:00",
-                "finished_at": "2024-05-06T18:00:00+03:00",
-            },
+            {"business_days": 1},
+            {"business_days": 1},
         ],
     )
 
@@ -36,14 +30,8 @@ def test_bm25_search_filters_by_business_days():
         ids=["fast", "slow"],
         documents=["fix bug", "fix bug"],
         metadatas=[
-            {
-                "created_at": "2024-05-06T10:00:00+03:00",
-                "finished_at": "2024-05-06T18:00:00+03:00",
-            },
-            {
-                "created_at": "2024-05-06T10:00:00+03:00",
-                "finished_at": "2024-05-17T18:00:00+03:00",
-            },
+            {"business_days": 1},
+            {"business_days": 10},
         ],
     )
 
