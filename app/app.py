@@ -642,6 +642,22 @@ async def get_projects(token: Annotated[str, Depends(oauth2_scheme)]):
     for entry in result]
     return {"status": "success", "result": result}
 
+@app.get("/app/v1/project_members")
+async def get_projects(project: str, token: Annotated[str, Depends(oauth2_scheme)]):
+    if not auth.verify_token(token):
+        return {"status": "error", "message": "Invalid token"}
+    token_payload = auth.decode_access_token(token)
+    login = token_payload.get("sub", "")
+    result = await db.get_project_members(login, project)
+    result = [
+        {
+            "id": str(entry[0]),
+            "login": entry[1],
+            "role": entry[2]
+        }
+    for entry in result]
+    return {"status": "success", "result": result}
+
 @app.get("/app/v1/add_member")
 async def add_member(member_login: str, project: str, token: Annotated[str, Depends(oauth2_scheme)]):
     if not auth.verify_token(token):
