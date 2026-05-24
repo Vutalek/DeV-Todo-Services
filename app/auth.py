@@ -1,4 +1,5 @@
 import os
+from typing import Dict, Any
 
 from pwdlib import PasswordHash
 import jwt
@@ -35,6 +36,10 @@ class AuthHandler:
         encoded_jwt = jwt.encode(to_encode, self.__secret_key, algorithm=self.__algorithm)
         return encoded_jwt
     
+    def decode_access_token(self, token: str) -> Dict[str, Any]:
+        payload = jwt.decode(token, self.__secret_key, algorithms=[self.__algorithm])
+        return payload
+
     def verify_token(self, token: str) -> str | None:
         try:
             payload = jwt.decode(token, self.__secret_key, algorithms=[self.__algorithm])
