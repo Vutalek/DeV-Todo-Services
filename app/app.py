@@ -50,6 +50,7 @@ app = FastAPI()
 origins = [
     "http://localhost",
     "http://localhost:8081",
+    "vscode-webview://*"
 ]
 
 app.add_middleware(
