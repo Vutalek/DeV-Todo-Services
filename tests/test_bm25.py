@@ -13,7 +13,16 @@ def test_bm25_search_returns_best_matching_document():
     search = BM25TaskSearch(
         ids=["a", "b"],
         documents=["fix auth token", "render dashboard chart"],
-        metadatas=[{"business_days": 1}, {"business_days": 1}],
+        metadatas=[
+            {
+                "created_at": "2024-05-06T10:00:00+03:00",
+                "finished_at": "2024-05-06T18:00:00+03:00",
+            },
+            {
+                "created_at": "2024-05-06T10:00:00+03:00",
+                "finished_at": "2024-05-06T18:00:00+03:00",
+            },
+        ],
     )
 
     results = search.search("auth token", n_results=1)
@@ -26,7 +35,16 @@ def test_bm25_search_filters_by_business_days():
     search = BM25TaskSearch(
         ids=["fast", "slow"],
         documents=["fix bug", "fix bug"],
-        metadatas=[{"business_days": 1}, {"business_days": 10}],
+        metadatas=[
+            {
+                "created_at": "2024-05-06T10:00:00+03:00",
+                "finished_at": "2024-05-06T18:00:00+03:00",
+            },
+            {
+                "created_at": "2024-05-06T10:00:00+03:00",
+                "finished_at": "2024-05-17T18:00:00+03:00",
+            },
+        ],
     )
 
     results = search.search("fix", n_results=10, where_days=(5, 20))

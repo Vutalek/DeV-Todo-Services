@@ -1,10 +1,13 @@
-from pathlib import Path
-
 from db.handler_data import (
     RetrievalTask,
     compute_business_days,
     compute_lead_time_hours,
+    get_document_field,
     parse_datetime,
+    task_from_document_metadata,
+    task_metadata_to_business_days,
+    task_metadata_to_time_hours,
+    task_payload_to_fields,
     task_to_document,
     task_to_metadata,
 )
@@ -62,7 +65,75 @@ def test_task_to_document_contains_main_fields():
     assert "Приоритет: High" in document
 
 
-def test_task_to_metadata_contains_working_duration():
+def test_get_document_field_extracts_value():
+    document = "Название: Fix auth\nОписание: Token bug"
+
+    assert get_document_field(document, "Описание") == "Token bug"
+
+
+def test_get_document_field_missing_returns_empty_string():
+    assert get_document_field("Название: Fix auth", "Описание") == ""
+
+
+def test_task_metadata_duration_helpers_use_timestamps():
+    metadata = {
+        "created_at": "2024-05-06T10:00:00+03:00",
+        "finished_at": "2024-05-06T12:00:00+03:00",
+    }
+
+    assert task_metadata_to_business_days(metadata) == 0.25
+    assert task_metadata_to_time_hours(metadata) == 2
+
+
+def test_task_from_document_metadata_builds_retrieval_task():
+    document = (
+        "Название: Fix auth\n"
+        "Описание: Token bug\n"
+        "Метка: Bug\n"
+        "Приоритет: High"
+    )
+    metadata = {
+        "created_at": "2024-05-06T10:00:00+03:00",
+        "finished_at": "2024-05-06T12:00:00+03:00",
+    }
+
+    task = task_from_document_metadata(document, metadata)
+
+    assert task == RetrievalTask(
+        name="Fix auth",
+        desc="Token bug",
+        prio="High",
+        label="Bug",
+        created_at="2024-05-06T10:00:00+03:00",
+        finished_at="2024-05-06T12:00:00+03:00",
+    )
+
+
+def test_task_payload_to_fields_uses_document_and_metadata():
+    task = {
+        "document": (
+            "Название: Fix auth\n"
+            "Описание: Token bug\n"
+            "Метка: Bug\n"
+            "Приоритет: High"
+        ),
+        "metadata": {
+            "created_at": "2024-05-06T10:00:00+03:00",
+            "finished_at": "2024-05-06T12:00:00+03:00",
+        },
+    }
+
+    assert task_payload_to_fields(task) == {
+        "name": "Fix auth",
+        "desc": "Token bug",
+        "priority": "High",
+        "label": "Bug",
+        "business_days": 0.25,
+        "time_hours": 2,
+    }
+
+
+def test_task_to_metadata_contains_only_timestamps():
     task = RetrievalTask(
         name="Fix auth",
         desc="Token bug",
@@ -74,8 +145,7 @@ def test_task_to_metadata_contains_working_duration():
 
     metadata = task_to_metadata(task)
 
-    assert metadata["name"] == "Fix auth"
-    assert metadata["labels"] == "Bug"
-    assert metadata["business_days"] == 0.25
-    assert metadata["lead_time_hours"] == 2.0
-
+    assert metadata == {
+        "created_at": "2024-05-06T10:00:00+03:00",
+        "finished_at": "2024-05-06T12:00:00+03:00",
+    }

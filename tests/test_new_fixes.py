@@ -1,6 +1,4 @@
-from datetime import datetime
 from zoneinfo import ZoneInfo
-import pytest
 from fastapi.testclient import TestClient
 
 from db.handler_data import parse_datetime
@@ -34,6 +32,7 @@ def test_add_or_update_task_rollback_on_failure(monkeypatch):
             deleted_ids.extend(ids)
 
     monkeypatch.setattr(app_mod.collection, "delete", mock_delete)
+    monkeypatch.setattr(app_mod.collection, "add", lambda **kwargs: None)
 
     # 2. Имитируем ошибку в работе update_bm25_index_locked
     def mock_update_fail():
@@ -85,8 +84,32 @@ def test_search_tasks_filters_by_relevance_score(monkeypatch):
     # 3. Мокаем get_chroma_tasks_by_ids в app_mod
     def mock_get_chroma_tasks(ids):
         return [
-            {"id": "task_high_id", "metadata": {"name": "High task", "prio": "5", "labels": "Bug"}},
-            {"id": "task_low_id", "metadata": {"name": "Low task", "prio": "1", "labels": "Bug"}},
+            {
+                "id": "task_high_id",
+                "document": (
+                    "Название: High task\n"
+                    "Описание: Auth bug\n"
+                    "Метка: Bug\n"
+                    "Приоритет: 5"
+                ),
+                "metadata": {
+                    "created_at": "2026-05-22T10:00:00Z",
+                    "finished_at": "2026-05-22T12:00:00Z",
+                },
+            },
+            {
+                "id": "task_low_id",
+                "document": (
+                    "Название: Low task\n"
+                    "Описание: Auth bug\n"
+                    "Метка: Bug\n"
+                    "Приоритет: 1"
+                ),
+                "metadata": {
+                    "created_at": "2026-05-22T10:00:00Z",
+                    "finished_at": "2026-05-22T12:00:00Z",
+                },
+            },
         ]
     monkeypatch.setattr(app_mod, "get_chroma_tasks_by_ids", mock_get_chroma_tasks)
 

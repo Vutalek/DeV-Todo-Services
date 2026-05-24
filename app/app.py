@@ -2,6 +2,9 @@ from contextlib import asynccontextmanager
 from db.bm25 import BM25TaskSearch, rrf_fusion
 from db.handler_data import (
     RetrievalTask,
+    task_from_document_metadata,
+    task_matches_day_filter,
+    task_payload_to_fields,
     task_to_document,
     task_to_metadata,
 )
@@ -63,7 +66,6 @@ MODEL = "deepseek/deepseek-v4-flash"
 RERANK_MODEL = "cohere/rerank-4-fast"
 RERANK_URL = "https://openrouter.ai/api/v1/rerank"
 RERANK_TOP_N = 5
-BUSINESS_DAY_HOURS = 8
 SIMILAR_TASKS_CONTEXT_TOP_N = 5
 
 prompt_path = os.path.join(BASE_DIR, 'prompt', 'prompt.txt')
@@ -123,19 +125,6 @@ def update_bm25_index_locked():
         bm25_index = None
 
 
-def get_document_field(document: str | None, field_name: str) -> str:
-    if not document:
-        return ""
-
-    prefix = f"{field_name}:"
-    for line in document.splitlines():
-        line = line.strip()
-        if line.startswith(prefix):
-            return line[len(prefix):].strip()
-
-    return ""
-
-
 def load_tasks_from_chroma():
     """Восстановление состояния BM25 в оперативной памяти из постоянного хранилища ChromaDB."""
     with chroma_lock:
@@ -149,14 +138,9 @@ def load_tasks_from_chroma():
             chroma_data.get("documents", []),
             chroma_data.get("metadatas", []),
         ):
-
-            tasks_store[task_id] = RetrievalTask(
-                name=get_document_field(document, "Название") or "",
-                desc=get_document_field(document, "Описание") or "",
-                prio=get_document_field(document, "Приоритет") or "",
-                label=get_document_field(document, "Метка") or "",
-                created_at=metadata.get("created_at") or None,
-                finished_at=metadata.get("finished_at") or None,
+            tasks_store[task_id] = task_from_document_metadata(
+                document,
+                metadata,
             )
 
         update_bm25_index_locked()
@@ -226,7 +210,7 @@ def get_chroma_tasks_by_ids(task_ids: list[str]) -> list[dict]:
         payloads_by_id[task_id] = {
             "id": task_id,
             "document": document or "",
-            "metadata": metadata,
+            "metadata": metadata or {},
         }
 
     return [
@@ -237,68 +221,32 @@ def get_chroma_tasks_by_ids(task_ids: list[str]) -> list[dict]:
 
 
 def task_payload_to_rerank_document(task: dict) -> str:
-    metadata = task.get("metadata") or {}
-    document = task.get("document") or ""
-    name = get_document_field(document, "Название") or ""
-    desc = get_document_field(document, "Описание") or ""
-    priority = get_document_field(document, "Приоритет") or ""
-    label = get_document_field(document, "Метка") or ""
+    fields = task_payload_to_fields(task)
 
     return "\n".join([
-        f"Name: {name}",
-        f"Description: {desc}",
-        f"Priority: {priority}",
-        f"Label: {label}",
-        f"Business days: {metadata.get('business_days', 0)}",
-        f"Time hours: {task_metadata_to_time_hours(metadata)}",
+        f"Name: {fields['name']}",
+        f"Description: {fields['desc']}",
+        f"Priority: {fields['priority']}",
+        f"Label: {fields['label']}",
+        f"Business days: {fields['business_days']}",
+        f"Time hours: {fields['time_hours']}",
     ])
-
-
-def business_days_to_time_hours(business_days) -> int | None:
-    try:
-        days = float(business_days)
-    except (TypeError, ValueError):
-        return None
-
-    if days <= 0:
-        return None
-
-    return max(1, round(days * BUSINESS_DAY_HOURS))
-
-
-def task_metadata_to_time_hours(metadata: dict) -> int | None:
-    lead_time_hours = metadata.get("lead_time_hours")
-    try:
-        hours = float(lead_time_hours)
-    except (TypeError, ValueError):
-        hours = 0
-
-    if hours > 0:
-        return max(1, round(hours))
-
-    return business_days_to_time_hours(metadata.get("business_days", 0))
 
 
 def task_payload_to_search_result(
     task: dict,
     reranker_score: float | None = None,
 ) -> dict:
-    metadata = task.get("metadata") or {}
-    document = task.get("document") or ""
-    name = get_document_field(document, "Название") or ""
-    desc = get_document_field(document, "Описание") or ""
-    priority = get_document_field(document, "Приоритет") or ""
-    label = get_document_field(document, "Метка") or ""
-    business_days = metadata.get("business_days", 0)
+    fields = task_payload_to_fields(task)
 
     return {
-        "name": name,
-        "desc": desc,
-        "priority": priority,
-        "label": label,
+        "name": fields["name"],
+        "desc": fields["desc"],
+        "priority": fields["priority"],
+        "label": fields["label"],
         "reranker_score": reranker_score,
-        "business_days": business_days,
-        "time_hours": task_metadata_to_time_hours(metadata),
+        "business_days": fields["business_days"],
+        "time_hours": fields["time_hours"],
     }
 
 
@@ -493,6 +441,7 @@ def find_relevant_tasks(search_req: SearchRequest) -> dict:
 
     # Выполнить BM25 поиск
     candidate_count = max(search_req.n_results, RERANK_TOP_N)
+    vector_candidate_count = candidate_count * 3
     where_days = (search_req.min_days, search_req.max_days)
     bm25_results = bm25_snapshot.search(
         query_text,
@@ -505,14 +454,8 @@ def find_relevant_tasks(search_req: SearchRequest) -> dict:
         with chroma_lock:
             vector_results = collection.query(
                 query_texts=[query_text],
-                n_results=candidate_count,
+                n_results=vector_candidate_count,
                 include=['distances'],
-                where={
-                    '$and': [
-                        {'business_days': {'$gte': search_req.min_days}},
-                        {'business_days': {'$lte': search_req.max_days}},
-                    ]
-                }
             )
     except Exception as e:
         print(f"Vector search error: {e}")
@@ -520,7 +463,7 @@ def find_relevant_tasks(search_req: SearchRequest) -> dict:
 
     # Гибридный поиск (RRF fusion)
     hybrid_results = rrf_fusion(
-        vector_results, bm25_results, k=60, top_n=candidate_count)
+        vector_results, bm25_results, k=60, top_n=vector_candidate_count)
 
     candidate_ids = []
     seen_task_ids = set()
@@ -532,7 +475,14 @@ def find_relevant_tasks(search_req: SearchRequest) -> dict:
         seen_task_ids.add(task_id)
         candidate_ids.append(task_id)
 
-    candidate_tasks = get_chroma_tasks_by_ids(candidate_ids)
+    candidate_tasks = [
+        task for task in get_chroma_tasks_by_ids(candidate_ids)
+        if task_matches_day_filter(
+            task,
+            search_req.min_days,
+            search_req.max_days,
+        )
+    ][:candidate_count]
     reranked_results, warning = rerank_tasks(
         query_text,
         candidate_tasks,

@@ -6,10 +6,10 @@ from fastapi.testclient import TestClient
 import app.app as mod
 
 
-def _task_payload(**metadata):
+def _task_payload(document=None, **metadata):
     return {
         "id": "task_1",
-        "document": (
+        "document": document or (
             "Название: Doc name\n"
             "Описание: Doc desc\n"
             "Метка: Doc label\n"
@@ -19,64 +19,20 @@ def _task_payload(**metadata):
     }
 
 
-def test_get_document_field_extracts_value():
-    document = "Название: Fix auth\nОписание: Token bug"
-
-    assert mod.get_document_field(document, "Описание") == "Token bug"
-
-
-def test_get_document_field_missing_returns_empty_string():
-    assert mod.get_document_field("Название: Fix auth", "Описание") == ""
-
-
-def test_normalize_chroma_metadata_recalculates_duration():
-    metadata = {
-        "name": "Fix",
-        "desc": "Bug",
-        "prio": "High",
-        "labels": "Bug",
-        "created_at": "2024-05-06T10:00:00+03:00",
-        "finished_at": "2024-05-06T12:00:00+03:00",
-        "business_days": 0,
-        "lead_time_hours": 0,
-    }
-
-    normalized = mod.normalize_chroma_metadata(metadata, "")
-
-    assert normalized["business_days"] == 0.25
-    assert normalized["lead_time_hours"] == 2.0
-
-
-def test_business_days_to_time_hours_converts_positive_days():
-    assert mod.business_days_to_time_hours(0.5) == 4
-
-
-def test_business_days_to_time_hours_invalid_returns_none():
-    assert mod.business_days_to_time_hours("bad") is None
-    assert mod.business_days_to_time_hours(0) is None
-
-
-def test_task_metadata_to_time_hours_prefers_lead_time_hours():
-    assert mod.task_metadata_to_time_hours({"lead_time_hours": 2.2, "business_days": 10}) == 2
-
-
-def test_task_payload_to_rerank_document_uses_metadata():
+def test_task_payload_to_rerank_document_uses_document_and_time_metadata():
     document = mod.task_payload_to_rerank_document(
         _task_payload(
-            name="Fix auth",
-            desc="Token bug",
-            prio="High",
-            labels="Bug",
-            business_days=0.25,
-            lead_time_hours=2,
+            created_at="2024-05-06T10:00:00+03:00",
+            finished_at="2024-05-06T12:00:00+03:00",
         )
     )
 
-    assert "Name: Fix auth" in document
+    assert "Name: Doc name" in document
+    assert "Business days: 0.25" in document
     assert "Time hours: 2" in document
 
 
-def test_task_payload_to_search_result_uses_document_fallbacks():
+def test_task_payload_to_search_result_uses_document_fields():
     result = mod.task_payload_to_search_result(_task_payload(), reranker_score=None)
 
     assert result == {
@@ -100,7 +56,7 @@ def test_rerank_tasks_empty_tasks_returns_no_warning():
 def test_rerank_tasks_missing_key_falls_back(monkeypatch):
     monkeypatch.setattr(mod, "ROUTER_API_KEY", None)
 
-    results, warning = mod.rerank_tasks("query", [_task_payload(name="Fix")])
+    results, warning = mod.rerank_tasks("query", [_task_payload()])
 
     assert results == []
     assert "ROUTER_API_KEY" in warning
@@ -114,7 +70,7 @@ def test_rerank_tasks_timeout_falls_back(monkeypatch):
 
     monkeypatch.setattr(mod.requests, "post", raise_timeout)
 
-    results, warning = mod.rerank_tasks("query", [_task_payload(name="Fix")])
+    results, warning = mod.rerank_tasks("query", [_task_payload()])
 
     assert results == []
     assert "timed out" in warning
@@ -126,7 +82,7 @@ def test_rerank_tasks_non_200_falls_back(monkeypatch):
     response = type("Response", (), {"status_code": 429, "text": "rate limit"})()
     monkeypatch.setattr(mod.requests, "post", lambda *args, **kwargs: response)
 
-    results, warning = mod.rerank_tasks("query", [_task_payload(name="Fix")])
+    results, warning = mod.rerank_tasks("query", [_task_payload()])
 
     assert results == []
     assert "HTTP 429" in warning
@@ -144,7 +100,7 @@ def test_rerank_tasks_invalid_json_falls_back(monkeypatch):
 
     monkeypatch.setattr(mod.requests, "post", lambda *args, **kwargs: Response())
 
-    results, warning = mod.rerank_tasks("query", [_task_payload(name="Fix")])
+    results, warning = mod.rerank_tasks("query", [_task_payload()])
 
     assert results == []
     assert "invalid JSON" in warning
@@ -160,7 +116,7 @@ def test_rerank_tasks_empty_results_falls_back(monkeypatch):
     )()
     monkeypatch.setattr(mod.requests, "post", lambda *args, **kwargs: response)
 
-    results, warning = mod.rerank_tasks("query", [_task_payload(name="Fix")])
+    results, warning = mod.rerank_tasks("query", [_task_payload()])
 
     assert results == []
     assert "no reranked results" in warning
@@ -169,8 +125,22 @@ def test_rerank_tasks_empty_results_falls_back(monkeypatch):
 def test_rerank_tasks_happy_path_orders_by_response_indexes(monkeypatch):
     monkeypatch.setattr(mod, "ROUTER_API_KEY", "key")
     tasks = [
-        _task_payload(name="First", desc="A", prio="Low", labels="Task"),
-        _task_payload(name="Second", desc="B", prio="High", labels="Bug"),
+        _task_payload(
+            document=(
+                "Название: First\n"
+                "Описание: A\n"
+                "Метка: Task\n"
+                "Приоритет: Low"
+            ),
+        ),
+        _task_payload(
+            document=(
+                "Название: Second\n"
+                "Описание: B\n"
+                "Метка: Bug\n"
+                "Приоритет: High"
+            ),
+        ),
     ]
 
     response = type(

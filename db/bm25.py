@@ -1,6 +1,8 @@
 from rank_bm25 import BM25Okapi
 import re
 
+from db.handler_data import task_metadata_to_business_days
+
 
 class BM25TaskSearch:
     def __init__(self, ids: list[str], documents: list[str], metadatas: list[dict]):
@@ -21,7 +23,7 @@ class BM25TaskSearch:
             min_days, max_days = where_days
             candidates = [
                 i for i in candidates
-                if min_days <= self.metadatas[i].get('business_days', 0) <= max_days
+                if min_days <= task_metadata_to_business_days(self.metadatas[i]) <= max_days
             ]
 
         ranked_indexes = sorted(
