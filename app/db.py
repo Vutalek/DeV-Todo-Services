@@ -269,6 +269,38 @@ class DBFacade:
         except Exception as e:
             logger.error(f"Failed to add member {login_to} for {project}: {e}.")
             return False
+        
+    async def leave_project(
+        self,
+        login: str,
+        project: str,
+    ) -> bool:
+        permissions = await self.get_user_permissions(login, project)
+        if "leave" not in permissions:
+            return False
+
+        try:
+            pool = await self.connect()
+            async with pool.acquire() as conn:
+                async with conn.transaction():
+                    project_id = await self._get_project_id(login, project, conn)
+                    if project_id == "":
+                        return False
+
+                    user_id = await self._get_user_id(login, conn)
+                    if user_id == "":
+                        return False
+
+                    await conn.execute(
+                        "delete from users_to_projects "
+                        "where project_id = $1 and user_id = $2",
+                        user_id,
+                        project_id,
+                    )
+            return True
+        except Exception as e:
+            logger.error(f"Failed {login} to leave {project}: {e}.")
+            return False
 
     async def delete_project(self, login: str, project: str) -> bool:
         permissions = await self.get_user_permissions(login, project)

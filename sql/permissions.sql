@@ -9,4 +9,5 @@ values
 ('PROJECT_CREATOR', 'edit'),
 ('PROJECT_CREATOR', 'invite'),
 ('PROJECT_MEMBER', 'edit'),
-('PROJECT_MEMBER', 'invite');
+('PROJECT_MEMBER', 'invite'),
+('PROJECT_MEMBER', 'leave');
