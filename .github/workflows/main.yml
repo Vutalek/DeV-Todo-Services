@@ -123,7 +123,6 @@ jobs:
               --name app-dev \
               --env-file .env \
               -v app-dev-chroma-db:/app/db/chroma_db \
-              -p 8800:8000 \
               --restart unless-stopped \
               app-dev
 
