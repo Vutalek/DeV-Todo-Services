@@ -643,7 +643,7 @@ async def get_projects(token: Annotated[str, Depends(oauth2_scheme)]):
     return {"status": "success", "result": result}
 
 @app.get("/app/v1/project_members")
-async def get_projects(project: str, token: Annotated[str, Depends(oauth2_scheme)]):
+async def get_project_members(project: str, token: Annotated[str, Depends(oauth2_scheme)]):
     if not auth.verify_token(token):
         return {"status": "error", "message": "Invalid token"}
     token_payload = auth.decode_access_token(token)
