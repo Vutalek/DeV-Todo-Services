@@ -587,8 +587,8 @@ async def sendtask(message: Message, token: Annotated[str, Depends(oauth2_scheme
             messages=[
                 {
                     "role": "system", "content": prompt.format(
-                        labels_list=labels_str,
-                        columns_list=columns_str
+                        labels_list=["backend", "frontend", "ml", "devops"],
+                        columns_list=["Бэклог", "В работе", "Выполнено"]
                     )
                 },
                 {
