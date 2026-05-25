@@ -681,6 +681,18 @@ async def add_member(project: str, token: Annotated[str, Depends(oauth2_scheme)]
         return {"status": "success"}
     else:
         return {"status": "fail"}
+    
+@app.delete("/app/v1/delete_project")
+async def delete_project(project: str, token: Annotated[str, Depends(oauth2_scheme)]):
+    if not auth.verify_token(token):
+        return {"status": "error", "message": "Invalid token"}
+    token_payload = auth.decode_access_token(token)
+    login = token_payload.get("sub", "")
+    result = await db.delete_project(login, project)
+    if result:
+        return {"status": "success"}
+    else:
+        return {"status": "fail"}
 
 @app.post("/app/v1/tasks")
 def add_or_update_task(task_req: TaskRequest, token: Annotated[str, Depends(oauth2_scheme)]):
