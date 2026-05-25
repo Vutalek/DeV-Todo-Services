@@ -56,7 +56,7 @@ VOLUME ["/app/db/chroma_db"]
 USER appuser
 
 # Expose the port that the application listens on.
-EXPOSE 8800
+EXPOSE 8000
 
 # Run the application. Keep one worker because BM25 lives in process memory.
-CMD uvicorn app.app:app --host 0.0.0.0 --port 8800 --workers 1
+CMD uvicorn app.app:app --host 0.0.0.0 --port 8000 --workers 1
