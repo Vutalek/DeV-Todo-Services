@@ -567,14 +567,19 @@ async def sendtask(message: Message, token: Annotated[str, Depends(oauth2_scheme
             },
         )
 
-    col_map, lab_map = await asyncio.to_thread(get_trello_data)
+    # col_map, lab_map = await asyncio.to_thread(get_trello_data)
 
-    labels_str = ", ".join(lab_map.keys())
-    columns_str = ", ".join(col_map.keys())
+    # labels_str = ", ".join(lab_map.keys())
+    # columns_str = ", ".join(col_map.keys())
+
+    # Task = create_dynamic_task_model(
+    #     columns=list(col_map.keys()),
+    #     labels=list(lab_map.keys())
+    # )
 
     Task = create_dynamic_task_model(
-        columns=list(col_map.keys()),
-        labels=list(lab_map.keys())
+        columns=["Бэклог", "В работе", "Выполнено"],
+        labels=["backend", "frontend", "ml", "devops"]
     )
     try:
         response = await async_client.chat.completions.parse(
