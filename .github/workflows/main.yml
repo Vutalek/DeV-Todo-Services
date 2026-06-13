@@ -105,7 +105,6 @@ jobs:
               --name app \
               --env-file .env \
               -v app-chroma-db:/app/db/chroma_db \
-              -p 127.0.0.1:8000:8000 \
               --network=app_network \
               --restart unless-stopped \
               app
