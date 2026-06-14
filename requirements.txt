@@ -8,3 +8,8 @@ rank-bm25>=0.2.2
 numpy>=1.24.0
 requests>=2.33.1
 pytest>=8.0.0
+pwdlib
+pwdlib[argon2]
+sqlalchemy
+pyjwt
+asyncpg

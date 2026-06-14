@@ -13,18 +13,24 @@ import os
 import requests
 import sys
 import time
+from typing import Annotated
+
 from threading import RLock
 from pathlib import Path
 from uuid import uuid4
 from openai import AsyncOpenAI, OpenAI
 from pydantic import BaseModel, Field, create_model
 from typing import Literal, List, Type
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from dotenv import load_dotenv
 import chromadb
+
 from common.deadline import calculate_deadline
+from .db import DBFacade
+from .auth import AuthHandler
 
 # Добавление родительской директории в пути поиска для импорта модулей db
 APP_DIR = Path(__file__).parent.resolve()
@@ -49,6 +55,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 origins = [
+    "*",
     "http://localhost",
     "http://localhost:8081",
 ]
@@ -60,6 +67,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+db = DBFacade()
+auth = AuthHandler()
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 MODEL = "deepseek/deepseek-v4-flash"
 RERANK_MODEL = "cohere/rerank-4-fast"
@@ -537,9 +548,117 @@ def get_similar_tasks_for_message(message_text: str) -> list[dict]:
 def heartbeat():
     return {"status": "alive"}
 
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+@app.post("/register")
+async def register(form_data: Annotated[OAuth2PasswordRequestForm, Depends()]):
+    exists = await db.get_user_id(form_data.username)
+    if exists != "":
+        raise HTTPException(status_code=409, detail="User already exists")
+    is_created = await db.create_user(form_data.username, form_data.password)
+    if not is_created:
+        raise HTTPException(status_code=500, detail="Failed to create user")
+ 
+    token = auth.create_access_token(data={"sub": form_data.username})
+    return Token(access_token=token, token_type="bearer")
+
+@app.post("/token")
+async def token(form_data: Annotated[OAuth2PasswordRequestForm, Depends()]):
+    is_authenticated = await auth.authenticate_user(
+        form_data.username,
+        form_data.password,
+    )
+    if not is_authenticated:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    token = auth.create_access_token(data={"sub": form_data.username})
+    return Token(access_token=token, token_type="bearer")
+
+@app.post("/app/v1/create_project")
+async def create_project(name: str, description: str, token: Annotated[str, Depends(oauth2_scheme)]):
+    if not auth.verify_token(token):
+        return {"status": "error", "message": "Invalid token"}
+    token_payload = auth.decode_access_token(token)
+    login = token_payload.get("sub", "")
+    result = await db.create_project(login, name, description)
+    if result:
+        return {"status": "success"}
+    else:
+        return {"status": "fail"}
+    
+@app.get("/app/v1/projects")
+async def get_projects(token: Annotated[str, Depends(oauth2_scheme)]):
+    if not auth.verify_token(token):
+        return {"status": "error", "message": "Invalid token"}
+    token_payload = auth.decode_access_token(token)
+    login = token_payload.get("sub", "")
+    result = await db.get_user_projects(login)
+    result = [
+        {
+            "id": str(entry[0]),
+            "name": entry[1],
+            "description": entry[2]
+        }
+    for entry in result]
+    return {"status": "success", "result": result}
+
+@app.get("/app/v1/project_members")
+async def get_project_members(project: str, token: Annotated[str, Depends(oauth2_scheme)]):
+    if not auth.verify_token(token):
+        return {"status": "error", "message": "Invalid token"}
+    token_payload = auth.decode_access_token(token)
+    login = token_payload.get("sub", "")
+    result = await db.get_project_members(login, project)
+    result = [
+        {
+            "id": str(entry[0]),
+            "login": entry[1],
+            "role": entry[2]
+        }
+    for entry in result]
+    return {"status": "success", "result": result}
+
+@app.get("/app/v1/add_member")
+async def add_member(member_login: str, project: str, token: Annotated[str, Depends(oauth2_scheme)]):
+    if not auth.verify_token(token):
+        return {"status": "error", "message": "Invalid token"}
+    token_payload = auth.decode_access_token(token)
+    login = token_payload.get("sub", "")
+    result = await db.add_member_to_project(login, member_login, project)
+    if result:
+        return {"status": "success"}
+    else:
+        return {"status": "fail"}
+    
+@app.post("/app/v1/leave_project")
+async def add_member(project: str, token: Annotated[str, Depends(oauth2_scheme)]):
+    if not auth.verify_token(token):
+        return {"status": "error", "message": "Invalid token"}
+    token_payload = auth.decode_access_token(token)
+    login = token_payload.get("sub", "")
+    result = await db.leave_project(login, project)
+    if result:
+        return {"status": "success"}
+    else:
+        return {"status": "fail"}
+    
+@app.delete("/app/v1/delete_project")
+async def delete_project(project: str, token: Annotated[str, Depends(oauth2_scheme)]):
+    if not auth.verify_token(token):
+        return {"status": "error", "message": "Invalid token"}
+    token_payload = auth.decode_access_token(token)
+    login = token_payload.get("sub", "")
+    result = await db.delete_project(login, project)
+    if result:
+        return {"status": "success"}
+    else:
+        return {"status": "fail"}
 
 @app.post("/app/v1/send")
-async def sendtask(message: Message):
+async def sendtask(message: Message, token: Annotated[str, Depends(oauth2_scheme)]):
+    if not auth.verify_token(token):
+        return {"status": "error", "message": "Invalid token"}
     if not ROUTER_API_KEY:
         return JSONResponse(
             status_code=502,
@@ -610,10 +729,12 @@ async def sendtask(message: Message):
 
 
 @app.post("/app/v1/add_task")
-def add_or_update_task(task_req: TaskRequest):
+def add_or_update_task(task_req: TaskRequest, token: Annotated[str, Depends(oauth2_scheme)]):
     """
     Добавить или обновить задачу в БД RAG-поиска.
     """
+    if not auth.verify_token(token):
+        return {"status": "error", "message": "Invalid token"}
     try:
         # Создать объект RetrievalTask
         task = RetrievalTask(
@@ -679,7 +800,9 @@ def add_or_update_task(task_req: TaskRequest):
 
 
 @app.post("/app/v1/search")
-def search_tasks(search_req: SearchRequest):
+def search_tasks(search_req: SearchRequest, token: Annotated[str, Depends(oauth2_scheme)]):
+    if not auth.verify_token(token):
+        return {"status": "error", "message": "Invalid token"}
     try:
         return find_relevant_tasks(search_req)
 
