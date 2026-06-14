@@ -632,7 +632,7 @@ async def add_member(member_login: str, project: str, token: Annotated[str, Depe
         return {"status": "fail"}
     
 @app.post("/app/v1/leave_project")
-async def add_member(project: str, token: Annotated[str, Depends(oauth2_scheme)]):
+async def leave_project(project: str, token: Annotated[str, Depends(oauth2_scheme)]):
     if not auth.verify_token(token):
         return {"status": "error", "message": "Invalid token"}
     token_payload = auth.decode_access_token(token)

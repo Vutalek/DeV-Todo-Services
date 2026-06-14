@@ -294,8 +294,8 @@ class DBFacade:
                     await conn.execute(
                         "delete from users_to_projects "
                         "where project_id = $1 and user_id = $2",
-                        user_id,
                         project_id,
+                        user_id
                     )
             return True
         except Exception as e:
