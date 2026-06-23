@@ -1,4 +1,4 @@
-from db.bm25 import BM25TaskSearch, rrf_fusion, tokenize
+from rag.bm25 import BM25TaskSearch, rrf_fusion, tokenize
 
 
 def test_tokenize_lowercases_words():

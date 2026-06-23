@@ -39,12 +39,12 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     python -m pip install -r requirements.txt
 
 # Create directories for RAG persistence.
-RUN mkdir -p /app/db/chroma_db && chown -R appuser:appuser /app/db
+RUN mkdir -p /app/rag/chroma_db && chown -R appuser:appuser /app/rag
 
 # Copy the source code into the container.
 COPY --chown=appuser:appuser . .
 
-VOLUME ["/app/db/chroma_db"]
+VOLUME ["/app/rag/chroma_db"]
 
 # Switch to the non-privileged user to run the application.
 USER appuser
@@ -53,4 +53,4 @@ USER appuser
 EXPOSE 8000
 
 # Run the application. Keep one worker because BM25 lives in process memory.
-CMD ["uvicorn", "app.app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]

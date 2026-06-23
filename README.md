@@ -19,7 +19,7 @@ TRELLO_BOARD_ID=...
 
 ```bash
 uv sync
-uv run uvicorn app.app:app --host 0.0.0.0 --port 8000 --reload
+uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 Проверка:
@@ -84,7 +84,7 @@ docker volume create todo-chroma-db
 docker run -d \
   --name todo-service \
   --env-file .env \
-  -v todo-chroma-db:/app/db/chroma_db \
+  -v todo-chroma-db:/app/rag/chroma_db \
   -p 8000:8000 \
   todo-service
 ```

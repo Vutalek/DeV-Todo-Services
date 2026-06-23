@@ -3,7 +3,11 @@ from types import SimpleNamespace
 import requests
 from fastapi.testclient import TestClient
 
-import app.app as mod
+from app.main import app
+import app.config as config
+import app.services.rag as rag
+import app.services.trello as trello_svc
+from app.models import create_dynamic_task_model
 
 
 def _task_payload(document=None, **metadata):
@@ -20,7 +24,7 @@ def _task_payload(document=None, **metadata):
 
 
 def test_task_payload_to_rerank_document_uses_document_and_time_metadata():
-    document = mod.task_payload_to_rerank_document(
+    document = rag.task_payload_to_rerank_document(
         _task_payload(
             created_at="2024-05-06T10:00:00+03:00",
             finished_at="2024-05-06T12:00:00+03:00",
@@ -35,7 +39,7 @@ def test_task_payload_to_rerank_document_uses_document_and_time_metadata():
 
 
 def test_task_payload_to_search_result_uses_document_fields():
-    result = mod.task_payload_to_search_result(_task_payload(), reranker_score=None)
+    result = rag.task_payload_to_search_result(_task_payload(), reranker_score=None)
 
     assert result == {
         "name": "Doc name",
@@ -49,49 +53,49 @@ def test_task_payload_to_search_result_uses_document_fields():
 
 
 def test_rerank_tasks_empty_tasks_returns_no_warning():
-    results, warning = mod.rerank_tasks("query", [])
+    results, warning = rag.rerank_tasks("query", [])
 
     assert results == []
     assert warning is None
 
 
 def test_rerank_tasks_missing_key_falls_back(monkeypatch):
-    monkeypatch.setattr(mod, "ROUTER_API_KEY", None)
+    monkeypatch.setattr(config, "ROUTER_API_KEY", None)
 
-    results, warning = mod.rerank_tasks("query", [_task_payload()])
+    results, warning = rag.rerank_tasks("query", [_task_payload()])
 
     assert results == []
     assert "ROUTER_API_KEY" in warning
 
 
 def test_rerank_tasks_timeout_falls_back(monkeypatch):
-    monkeypatch.setattr(mod, "ROUTER_API_KEY", "key")
+    monkeypatch.setattr(config, "ROUTER_API_KEY", "key")
 
     def raise_timeout(*args, **kwargs):
         raise requests.Timeout()
 
-    monkeypatch.setattr(mod.requests, "post", raise_timeout)
+    monkeypatch.setattr(rag.requests, "post", raise_timeout)
 
-    results, warning = mod.rerank_tasks("query", [_task_payload()])
+    results, warning = rag.rerank_tasks("query", [_task_payload()])
 
     assert results == []
     assert "timed out" in warning
 
 
 def test_rerank_tasks_non_200_falls_back(monkeypatch):
-    monkeypatch.setattr(mod, "ROUTER_API_KEY", "key")
+    monkeypatch.setattr(config, "ROUTER_API_KEY", "key")
 
     response = type("Response", (), {"status_code": 429, "text": "rate limit"})()
-    monkeypatch.setattr(mod.requests, "post", lambda *args, **kwargs: response)
+    monkeypatch.setattr(rag.requests, "post", lambda *args, **kwargs: response)
 
-    results, warning = mod.rerank_tasks("query", [_task_payload()])
+    results, warning = rag.rerank_tasks("query", [_task_payload()])
 
     assert results == []
     assert "HTTP 429" in warning
 
 
 def test_rerank_tasks_invalid_json_falls_back(monkeypatch):
-    monkeypatch.setattr(mod, "ROUTER_API_KEY", "key")
+    monkeypatch.setattr(config, "ROUTER_API_KEY", "key")
 
     class Response:
         status_code = 200
@@ -100,32 +104,32 @@ def test_rerank_tasks_invalid_json_falls_back(monkeypatch):
         def json(self):
             raise ValueError("bad json")
 
-    monkeypatch.setattr(mod.requests, "post", lambda *args, **kwargs: Response())
+    monkeypatch.setattr(rag.requests, "post", lambda *args, **kwargs: Response())
 
-    results, warning = mod.rerank_tasks("query", [_task_payload()])
+    results, warning = rag.rerank_tasks("query", [_task_payload()])
 
     assert results == []
     assert "invalid JSON" in warning
 
 
 def test_rerank_tasks_empty_results_falls_back(monkeypatch):
-    monkeypatch.setattr(mod, "ROUTER_API_KEY", "key")
+    monkeypatch.setattr(config, "ROUTER_API_KEY", "key")
 
     response = type(
         "Response",
         (),
         {"status_code": 200, "text": "{}", "json": lambda self: {"results": []}},
     )()
-    monkeypatch.setattr(mod.requests, "post", lambda *args, **kwargs: response)
+    monkeypatch.setattr(rag.requests, "post", lambda *args, **kwargs: response)
 
-    results, warning = mod.rerank_tasks("query", [_task_payload()])
+    results, warning = rag.rerank_tasks("query", [_task_payload()])
 
     assert results == []
     assert "no reranked results" in warning
 
 
 def test_rerank_tasks_happy_path_orders_by_response_indexes(monkeypatch):
-    monkeypatch.setattr(mod, "ROUTER_API_KEY", "key")
+    monkeypatch.setattr(config, "ROUTER_API_KEY", "key")
     tasks = [
         _task_payload(
             document=(
@@ -159,9 +163,9 @@ def test_rerank_tasks_happy_path_orders_by_response_indexes(monkeypatch):
             },
         },
     )()
-    monkeypatch.setattr(mod.requests, "post", lambda *args, **kwargs: response)
+    monkeypatch.setattr(rag.requests, "post", lambda *args, **kwargs: response)
 
-    results, warning = mod.rerank_tasks("query", tasks, top_n=2)
+    results, warning = rag.rerank_tasks("query", tasks, top_n=2)
 
     assert warning is None
     assert [item["name"] for item in results] == ["Second", "First"]
@@ -169,7 +173,7 @@ def test_rerank_tasks_happy_path_orders_by_response_indexes(monkeypatch):
 
 
 def test_create_dynamic_task_model_validates_literals():
-    Task = mod.create_dynamic_task_model(columns=["Backlog"], labels=["Bug"])
+    Task = create_dynamic_task_model(columns=["Backlog"], labels=["Bug"])
 
     parsed = Task(
         name="Fix",
@@ -185,7 +189,7 @@ def test_create_dynamic_task_model_validates_literals():
 
 
 def test_build_message_text_with_similar_tasks_adds_context():
-    message_text = mod.build_message_text_with_similar_tasks(
+    message_text = rag.build_message_text_with_similar_tasks(
         "Починить авторизацию",
         [
             {
@@ -212,17 +216,17 @@ def test_build_message_text_with_similar_tasks_adds_context():
 
 
 def test_send_enriches_message_with_similar_tasks(monkeypatch):
-    client = TestClient(mod.app)
+    client = TestClient(app)
     captured = {}
 
-    monkeypatch.setattr(mod, "ROUTER_API_KEY", "key")
+    monkeypatch.setattr(config, "ROUTER_API_KEY", "key")
     monkeypatch.setattr(
-        mod,
+        trello_svc,
         "get_trello_data",
         lambda: ({"Backlog": "list_1"}, {"Bug": "label_1"}),
     )
     monkeypatch.setattr(
-        mod,
+        rag,
         "get_similar_tasks_for_message",
         lambda text: [
             {
@@ -263,7 +267,7 @@ def test_send_enriches_message_with_similar_tasks(monkeypatch):
             )
 
     monkeypatch.setattr(
-        mod,
+        config,
         "async_client",
         SimpleNamespace(chat=SimpleNamespace(completions=FakeCompletions())),
     )
